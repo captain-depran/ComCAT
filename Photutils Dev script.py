@@ -12,6 +12,7 @@ import ccdproc as ccdp
 
 from photutils.detection import IRAFStarFinder,find_peaks
 from photutils.aperture import CircularAperture
+from photutils.background import Background2D, MedianBackground
 
 from astropy.visualization import SqrtStretch,SinhStretch
 from astropy.visualization.mpl_normalize import ImageNormalize
@@ -23,6 +24,14 @@ import astropy.units as u
 import astropy.coordinates as coords
 
 from astroquery.vizier import Vizier
+
+
+
+from astropy.stats import sigma_clipped_stats, SigmaClip
+
+
+
+
 
 def get_image_data(calib_path,tgt,filter):
     file=get_image_file(calib_path,tgt,filter)
@@ -38,6 +47,9 @@ def get_image_file(calib_path,tgt,filter):
     return science_files[0]
 
 def bound_legal(value,shift,hi_limit,lw_limit):
+    """
+    Function to shift a value up or down (shift is sign dependent) and clip it to a given upper or lower bound. Primaily for selecting a 2d array section
+    """
     value=value+shift
     if value > hi_limit:
         value=hi_limit
@@ -57,6 +69,8 @@ def local_peak(data,mask,cat_pos,width,edge):
 
     clip_data=data[low_y:high_y,low_x:high_x]
     mask=mask[low_y:high_y,low_x:high_x]
+
+
 
     mean, median, std = sig(clip_data, sigma=3.0)
     clip_data[mask]=median
@@ -110,6 +124,18 @@ field_span=len(data[:,1])
 
 mean, median, std = sig(data, sigma=3.0)
 data[mask]=median
+
+
+sigma_clip = SigmaClip(sigma=3.0)
+bkg_estimator = MedianBackground()
+bkg = Background2D(data, (20, 20), filter_size=(3, 3),
+                    sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
+
+
+data=data-bkg.background
+
+
+"""
 print("Searching Catalogue")
 catalogue = vizier.query_region(img_wcs.pixel_to_world(416,416),width="4m",catalog="II/349/ps1")[0]
 #catalogue = vizier.query_region(img_wcs.pixel_to_world(416,416),width="4m",catalog="I/355/gaiadr3")[0]
@@ -129,8 +155,10 @@ ps1_pix=np.array(ps1_pix)
 ps1_apps=CircularAperture(ps1_pix,r=3)
 
 """
+"""
 IRAFfind = IRAFStarFinder(fwhm=7.0, sigma_radius=1.3, threshold=5.*std,sharplo=0.3,sharphi=4)
 sources = IRAFfind(data-median)
+"""
 """
 positions=[]
 for coord in ps1_pix:
@@ -140,6 +168,7 @@ for coord in ps1_pix:
 positions=np.array(positions)
 #positions = np.transpose((sources['xcentroid'], sources['ycentroid']))
 apertures = CircularAperture(positions, r=4.0)
+"""
 
 """
 for col in sources.colnames:
@@ -149,14 +178,14 @@ for col in sources.colnames:
 """
 #norm = ImageNormalize(stretch=SinhStretch(),clip=False)
 
-
+"""
 plt.imshow(data, cmap='grey', origin='lower', norm=LogNorm())
 apertures.plot(color='blue', lw=1.5, alpha=0.5)
 ps1_apps.plot(color='green',lw=1.5,alpha=0.5)
 plt.xlim(0,824)
 plt.ylim(0,824)
 plt.show()
-
+"""
 """
 plt.plot(data[:,256])
 plt.show()
