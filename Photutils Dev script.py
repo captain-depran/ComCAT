@@ -38,15 +38,14 @@ def get_image_file(calib_path,tgt,filter):
     return science_files[0]
 
 def bound_legal(value,shift,hi_limit,lw_limit):
-    mod=value+shift
-    print(mod)
+    value=value+shift
     if value > hi_limit:
         value=hi_limit
     elif value < lw_limit:
         value=lw_limit
     return int(value)
 
-def local_peak(data,cat_pos,width,edge):
+def local_peak(data,mask,cat_pos,width,edge):
     """
     Function to take a catalogue position, and find the local peak within a box of 2 x 'width' centered on that position
     """
@@ -56,12 +55,28 @@ def local_peak(data,cat_pos,width,edge):
     high_y=bound_legal(cat_pos[1],width,edge,0)
     
 
-    clip_data=data[low_x:high_x,low_y:high_y]
+    clip_data=data[low_y:high_y,low_x:high_x]
+    mask=mask[low_y:high_y,low_x:high_x]
 
     mean, median, std = sig(clip_data, sigma=3.0)
+    clip_data[mask]=median
+    star=find_peaks(clip_data,threshold=1.*std ,box_size=len(clip_data[0]),npeaks=1)
+    #star = IRAFStarFinder(fwhm=7.0,threshold=1.*std,xycoords=[[(high_x-low_x)/2,(high_y-low_y)/2]])
+    #star = star(clip_data-median,mask[low_y:high_y,low_x:high_x])
+    print(star)
+    print(median)
+    star_pos=np.transpose([star['x_peak'], star['y_peak']])[0]
 
-    star=find_peaks(data-median,threshold=3.*std ,box_size=len(clip_data[0]),npeaks=1)
-    return np.transpose((star['x_peak'], star['y_peak']))
+    apertures = CircularAperture(star_pos,r=3)
+    ps1_apps = CircularAperture([(high_x-low_x)/2,(high_y-low_y)/2],r=4)
+    
+    plt.imshow(clip_data,cmap='grey', origin='lower', norm=LogNorm())
+    apertures.plot(color='blue', lw=1.5, alpha=0.5)
+    ps1_apps.plot(color='green',lw=1.5,alpha=0.5)
+    plt.show()
+    
+
+    return (star_pos-[(high_x-low_x)/2,(high_y-low_y)/2])+cat_pos
 
 
 
@@ -75,18 +90,26 @@ Vizier.clear_cache()
 
 
 tgt_name="93P"
-filter="R#642"
+filter="V#641"
 
+mask=CT.load_bad_pixel_mask(calib_path)
 hdu_path=pathlib.Path(calib_path/get_image_file(calib_path,tgt_name,filter))
 with fits.open(hdu_path) as img:
-    hdu=img[0]
     data=img[0].data
+    hdu=img[0]
     img_wcs=WCS(img[0].header)
+
+ccd_data=CCDData.read(calib_path/get_image_file(calib_path,tgt_name,filter))
+
+#plt.imshow(mask,origin="lower")
+#plt.show()
 
 field_span=len(data[:,1])
 
-mean, median, std = sig(data, sigma=3.0)
 
+
+mean, median, std = sig(data, sigma=3.0)
+data[mask]=median
 print("Searching Catalogue")
 catalogue = vizier.query_region(img_wcs.pixel_to_world(416,416),width="4m",catalog="II/349/ps1")[0]
 #catalogue = vizier.query_region(img_wcs.pixel_to_world(416,416),width="4m",catalog="I/355/gaiadr3")[0]
@@ -111,8 +134,9 @@ sources = IRAFfind(data-median)
 """
 positions=[]
 for coord in ps1_pix:
-    star_pos=local_peak(data,coord,25,field_span)
+    star_pos=local_peak(data,mask,coord,10,field_span)
     positions.append(star_pos)
+    
 positions=np.array(positions)
 #positions = np.transpose((sources['xcentroid'], sources['ycentroid']))
 apertures = CircularAperture(positions, r=4.0)
