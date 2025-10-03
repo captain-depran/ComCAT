@@ -10,7 +10,7 @@ import pathlib
 from ccdproc import ImageFileCollection
 import ccdproc as ccdp
 
-from photutils.detection import DAOStarFinder
+from photutils.detection import IRAFStarFinder,find_peaks
 from photutils.aperture import CircularAperture
 
 from astropy.visualization import SqrtStretch,SinhStretch
@@ -37,6 +37,36 @@ def get_image_file(calib_path,tgt,filter):
     science_files=science.files_filtered(**criteria)
     return science_files[0]
 
+def bound_legal(value,shift,hi_limit,lw_limit):
+    mod=value+shift
+    print(mod)
+    if value > hi_limit:
+        value=hi_limit
+    elif value < lw_limit:
+        value=lw_limit
+    return int(value)
+
+def local_peak(data,cat_pos,width,edge):
+    """
+    Function to take a catalogue position, and find the local peak within a box of 2 x 'width' centered on that position
+    """
+    low_x=bound_legal(cat_pos[0],-1*width,edge,0)
+    high_x=bound_legal(cat_pos[0],width,edge,0)
+    low_y=bound_legal(cat_pos[1],-1*width,edge,0)
+    high_y=bound_legal(cat_pos[1],width,edge,0)
+    
+
+    clip_data=data[low_x:high_x,low_y:high_y]
+
+    mean, median, std = sig(clip_data, sigma=3.0)
+
+    star=find_peaks(data-median,threshold=3.*std ,box_size=len(clip_data[0]),npeaks=1)
+    return np.transpose((star['x_peak'], star['y_peak']))
+
+
+
+
+
 root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
@@ -45,7 +75,7 @@ Vizier.clear_cache()
 
 
 tgt_name="93P"
-filter="V#641"
+filter="R#642"
 
 hdu_path=pathlib.Path(calib_path/get_image_file(calib_path,tgt_name,filter))
 with fits.open(hdu_path) as img:
@@ -53,45 +83,58 @@ with fits.open(hdu_path) as img:
     data=img[0].data
     img_wcs=WCS(img[0].header)
 
-
-
+field_span=len(data[:,1])
 
 mean, median, std = sig(data, sigma=3.0)
 
-daofind = DAOStarFinder(fwhm=7.0, threshold=6.*std)
-sources = daofind(data - median)
+print("Searching Catalogue")
+catalogue = vizier.query_region(img_wcs.pixel_to_world(416,416),width="4m",catalog="II/349/ps1")[0]
+#catalogue = vizier.query_region(img_wcs.pixel_to_world(416,416),width="4m",catalog="I/355/gaiadr3")[0]
+print("Catalogue Imported")
 
+ps1_pos=np.transpose((catalogue["RAJ2000"],catalogue["DEJ2000"]))
+big_ps1_pix=np.transpose(img_wcs.world_to_pixel(coords.SkyCoord(ra=ps1_pos[:,0],dec=ps1_pos[:,1],unit="deg",frame="fk5")))
 
+ps1_pix=[]
+for n in range(0,len(big_ps1_pix)):
+    if big_ps1_pix[n,0] < 0 or big_ps1_pix[n,0] > field_span or big_ps1_pix[n,1] < 0 or big_ps1_pix[n,1] > field_span:
+        pass
+    else:
+        ps1_pix.append(big_ps1_pix[n,:])
+ps1_pix=np.array(ps1_pix)
+
+ps1_apps=CircularAperture(ps1_pix,r=3)
+
+"""
+IRAFfind = IRAFStarFinder(fwhm=7.0, sigma_radius=1.3, threshold=5.*std,sharplo=0.3,sharphi=4)
+sources = IRAFfind(data-median)
+"""
+positions=[]
+for coord in ps1_pix:
+    star_pos=local_peak(data,coord,25,field_span)
+    positions.append(star_pos)
+positions=np.array(positions)
+#positions = np.transpose((sources['xcentroid'], sources['ycentroid']))
+apertures = CircularAperture(positions, r=4.0)
+
+"""
 for col in sources.colnames:
     if col not in ('id', 'npix'):
         sources[col].info.format = '%.2f'  # for consistent table output
 #print (sources)
-
-
-positions = np.transpose((sources['xcentroid'], sources['ycentroid']))
-apertures = CircularAperture(positions, r=4.0)
-
-
-
-catalogue = vizier.query_region(img_wcs.pixel_to_world(416,416),width="4m",catalog="II/349/ps1")[0]
-#catalogue = vizier.query_region(img_wcs.pixel_to_world(416,416),width="4m",catalog="I/355/gaiadr3")[0]
-
-ps1_pos=np.transpose((catalogue["RAJ2000"],catalogue["DEJ2000"]))
-ps1_pix=np.transpose(img_wcs.world_to_pixel(coords.SkyCoord(ra=ps1_pos[:,0],dec=ps1_pos[:,1],unit="deg",frame="fk5")))
-
-ps1_apps=CircularAperture(ps1_pix,r=3)
-
+"""
 #norm = ImageNormalize(stretch=SinhStretch(),clip=False)
 
-"""
-plt.imshow(data-400, cmap='grey', origin='lower', norm=LogNorm())
+
+plt.imshow(data, cmap='grey', origin='lower', norm=LogNorm())
 apertures.plot(color='blue', lw=1.5, alpha=0.5)
 ps1_apps.plot(color='green',lw=1.5,alpha=0.5)
 plt.xlim(0,824)
 plt.ylim(0,824)
 plt.show()
-"""
 
+"""
 plt.plot(data[:,256])
 plt.show()
 
+"""
