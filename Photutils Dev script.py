@@ -86,15 +86,17 @@ def catalogue_filter(catalogue,min_sep):
         
 
 def catalogue_pos_parse(catalogue,wcs,field_span):
+    ids=[]
     ps1_pos=np.transpose((catalogue["RAJ2000"],catalogue["DEJ2000"]))
     big_ps1_pix=np.transpose(wcs.world_to_pixel(coords.SkyCoord(ra=ps1_pos[:,0],dec=ps1_pos[:,1],unit="deg",frame="fk5")))
     ps1_pix=[]
-    for n in range(0,len(big_ps1_pix)):
+    for id,n in zip(catalogue["ID"].value,range(0,len(big_ps1_pix))):
         if big_ps1_pix[n,0] < 0 or big_ps1_pix[n,0] > field_span or big_ps1_pix[n,1] < 0 or big_ps1_pix[n,1] > field_span:
             pass
         else:
             ps1_pix.append(big_ps1_pix[n,:])
-    return np.array(ps1_pix)
+            ids.append(id)
+    return np.array(ps1_pix),np.array(ids)
     
 
 
@@ -198,8 +200,9 @@ print("Catalogue Imported")
 catalogue,exclude_cat=catalogue_filter(catalogue,2*star_cell_size*pix_size)  
 
 #Generate pixel coordinates for the included and excluded catalogue entries
-ps1_pix=catalogue_pos_parse(catalogue,img_wcs,field_span)
-exc_pix=catalogue_pos_parse(exclude_cat,img_wcs,field_span)
+ps1_pix,in_ids=catalogue_pos_parse(catalogue,img_wcs,field_span)
+exc_pix,ex_ids=catalogue_pos_parse(exclude_cat,img_wcs,field_span)
+catalogue=catalogue[np.isin(catalogue["ID"],in_ids)]
 
 #Generate circular apertures around each catalgoue entry
 ps1_apps=CircularAperture(ps1_pix,r=3)
@@ -207,9 +210,12 @@ exc_apps=CircularAperture(exc_pix,r=3)
 
 
 positions=[]
+
 for coord in ps1_pix:
     star_pos=local_peak(data,coord,star_cell_size,field_span)
     positions.append(star_pos)
+
+
     
 positions=np.array(positions)
 apertures = CircularAperture(positions, r=4.0)
@@ -225,5 +231,4 @@ exc_apps.plot(color='red',lw=1.5,alpha=0.5)
 plt.xlim(0,824)
 plt.ylim(0,824)
 plt.show()
-
 
