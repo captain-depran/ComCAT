@@ -42,10 +42,10 @@ def get_image_data(calib_path,tgt,filter):
     return data
 
 def get_image_file(calib_path,tgt,filter):
-    criteria={'object' : tgt_name, "ESO INS FILT1 NAME".lower():filter}
-    science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt_name+"_"+filter+"*")
+    criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
+    science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt+"_"+filter+"*")
     science_files=science.files_filtered(**criteria)
-    return science_files[0]
+    return science_files[1]
 
 def catalogue_filter(catalogue,min_sep):
     min_sep=min_sep/60/60
@@ -160,7 +160,7 @@ vizier = Vizier() # this instantiates Vizier with its default parameters
 Vizier.clear_cache()
 
 
-tgt_name="93P"
+tgt_name="31P"
 filter="R#642"
 pix_size=0.24  #size of a pixel in arcseconds
 star_cell_size=10 #half width of the cell used for star detection around a PS1 entry
