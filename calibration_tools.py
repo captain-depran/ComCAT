@@ -8,6 +8,7 @@ import warnings
 
 import numpy as np
 from astropy.io import fits
+from astropy.stats import sigma_clipped_stats as sig
 import astropy.units as u
 from astropy.nddata import CCDData
 from ccdproc import ImageFileCollection, Combiner, combine
@@ -20,6 +21,7 @@ from matplotlib.colors import LogNorm
 from astropy.utils.exceptions import AstropyWarning
 warnings.simplefilter('ignore', category=AstropyWarning)
 warnings.simplefilter('ignore', category=UserWarning)
+
 
 root_dir = pathlib.Path(__file__).resolve().parent
 
@@ -116,16 +118,26 @@ def generate_bad_pixel_mask(all_fits_path,out_path):
     print("MASK SAVED AT: "+str(out_path))
     return mask
 
+def cosmic_ray_mask(ccd_image,gain,read_noise):
+    new_ccd=ccdp.cosmicray_lacosmic(ccd_image,readnoise=(1/gain)*read_noise,sigclip=10)
+    return new_ccd.mask
 
 
 def reduce_img(tgt_path,out_path,trim,bias,flat,tgt_name,img_filter, mask = None, *args, **kwargs ):
+    with fits.open(tgt_path) as img:
+        read_noise=float(img[0].header["HIERARCH ESO DET OUT1 RON".lower()])
+        gain=float(img[0].header["HIERARCH ESO DET OUT1 CONAD".lower()])
+
     tgt=CCDData.read(tgt_path,unit='adu')
     tgt=ccdp.trim_image(tgt[trim])
     tgt=ccdp.subtract_bias(tgt,bias)
     tgt=ccdp.flat_correct(tgt,flat)
 
+    mask = mask | cosmic_ray_mask(tgt,gain,read_noise)
+    tgt.mask=tgt.mask | mask
     if mask is not None:
         tgt.mask = tgt.mask | mask
+
 
     out_path=pathlib.Path(out_path/(tgt_name+"_"+img_filter+"_"+str(tgt.header["mjd-obs"])+".fits"))
 
@@ -149,7 +161,7 @@ def show_image(img,log_plt=True,*args, **kwargs):
 def plate_solve(img_path,px_scale):
     ra_tag="RA"
     dec_tag="DEC"
-
+    solved_flag=False
     with fits.open(img_path) as img:
         ra_cent=img[0].header[ra_tag]
         dec_cent=img[0].header[dec_tag]
@@ -161,9 +173,10 @@ def plate_solve(img_path,px_scale):
 
     plate_wcs=ast.solve_from_image(str(img_path),
                                    verbose=False,
+                                   positional_error=20,
                                    scale_units='arcsecperpix',
-                                   detect_threshold=7,
-                                   fwhm=6,
+                                   detect_threshold=8,
+                                   fwhm=7,
                                    scale_est=px_scale,
                                    scale_type="ev",
                                    scale_err=5,
@@ -174,8 +187,10 @@ def plate_solve(img_path,px_scale):
                                    ra_dec_units=("degree","degree"))
     if plate_wcs=={}:
         print("PLATE SOLVING FAILED/TIMEDOUT: "+img_path.name)
+    else:
+        solved_flag=True
 
-    return plate_wcs
+    return plate_wcs,solved_flag
 
 def batch_plate_solve(dir,file_list,px_scale):
     print ("PLATE SOLVING ",len(file_list)," IMAGES")
@@ -184,13 +199,16 @@ def batch_plate_solve(dir,file_list,px_scale):
     failed_files=[]
     for file in file_list:
         tgt_path=pathlib.Path(dir/file)
-        plate_wcs=plate_solve(tgt_path,px_scale)
-        if plate_wcs=={}:
+        plate_wcs,solved=plate_solve(tgt_path,px_scale)
+        if solved==False:
+            with fits.open(tgt_path,mode="update") as img:
+                img[0].header.update({"plate_solved" : solved})
             fails+=1
             failed_files.append(tgt_path.name)
         else:
             with fits.open(tgt_path,mode="update") as img:
                 img[0].header.update(plate_wcs)
+                img[0].header.update({"plate_solved" : solved})
     print("PLATE SOLVING COMPLETE! | ",fails," FAILS | ",file_n-fails, " SUCCESSES")
     if len(failed_files)!=0:
         print("--- FAILED FILES ---")
