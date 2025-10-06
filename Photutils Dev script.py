@@ -142,8 +142,9 @@ def local_peak(data,cat_pos,width,edge):
 
     clip_data=data[low_y:high_y,low_x:high_x]
 
-    result=fit_gauss(clip_data,fwhm=7.0,xypos=center).results
+    result=fit_gauss(clip_data,fix_fwhm=False,xypos=center).results
     star_pos=np.array([result["x_fit"][0],result["y_fit"][0]])
+    fwhm_fit=result["fwhm_fit"][0]
     """
     print(star_pos)
 
@@ -155,7 +156,7 @@ def local_peak(data,cat_pos,width,edge):
     ps1_apps.plot(color='green',lw=1.5,alpha=0.5)
     plt.show()
     """
-    return (star_pos-center)+cat_pos
+    return ((star_pos-center)+cat_pos),fwhm_fit
 
 
 def cosmic_ray_reduce(ccd_image,read_noise):
@@ -171,7 +172,7 @@ vizier = Vizier(row_limit=-1) # this instantiates Vizier with its default parame
 Vizier.clear_cache()
 
 
-tgt_name="P113"
+tgt_name="P29"
 filter="R#642"
 pix_size=0.24  #size of a pixel in arcseconds
 star_cell_size=15 #half width of the cell used for star detection around a PS1 entry
@@ -220,7 +221,10 @@ data=data-bkg.background
 
 #Catalogue query for PS1 stars in the image
 print("Searching Catalogue")
-catalogue = vizier.query_region(img_wcs.pixel_to_world(412,412),width="4m",catalog="II/349/ps1")[0]
+catalogue = vizier.query_region(img_wcs.pixel_to_world(412,412),
+                                width="4m",
+                                catalog="II/349/ps1",
+                                column_filters={'gmag': '!=','rmag': '!=','imag': '!='})[0]
 catalogue.add_column(np.linspace(0,len(catalogue)-1,num=len(catalogue)),name="ID")
 print("Catalogue Imported")
 
@@ -239,11 +243,11 @@ exc_apps=CircularAperture(exc_pix,r=3)
 
 
 positions=[]
-
+fwhm=[]
 for coord in ps1_pix:
-    star_pos=local_peak(data,coord,star_cell_size,field_span)
+    star_pos,fwhm_fit=local_peak(data,coord,star_cell_size,field_span)
     positions.append(star_pos)
-
+    fwhm.append(fwhm_fit)
 
     
 positions=np.array(positions)
@@ -261,3 +265,6 @@ plt.xlim(0,824)
 plt.ylim(0,824)
 plt.show()
 
+
+plt.hist(fwhm,bins=30,range=[2,15])
+plt.show()
