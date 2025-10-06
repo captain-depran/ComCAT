@@ -7,7 +7,7 @@ import numpy as np
 
 import pathlib
 
-from ccdproc import ImageFileCollection
+from ccdproc import ImageFileCollection,Combiner
 import ccdproc as ccdp
 
 from photutils.detection import IRAFStarFinder,find_peaks
@@ -30,8 +30,8 @@ from astroquery.vizier import Vizier
 
 from astropy.stats import sigma_clipped_stats, SigmaClip
 
-
-
+class Not_plate_solved(Exception):
+    pass
 
 
 def get_image_data(calib_path,tgt,filter):
@@ -41,11 +41,13 @@ def get_image_data(calib_path,tgt,filter):
         data=img[0].data
     return data
 
+
+
 def get_image_file(calib_path,tgt,filter):
     criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
     science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt+"_"+filter+"*")
     science_files=science.files_filtered(**criteria)
-    return science_files[1]
+    return science_files[2]
 
 def catalogue_filter(catalogue,min_sep):
     min_sep=min_sep/60/60
@@ -64,21 +66,23 @@ def catalogue_filter(catalogue,min_sep):
         distance=np.sqrt((compare_cat["RAJ2000"].value**2)+(compare_cat["DEJ2000"].value**2))
         compare_cat.add_column(distance,name="dist")
         compare_cat.sort("dist")
+        if entry[2]==99:
+            removed_ids.append(entry[3])
+        else:
+            for star in compare_cat.filled():
+                if star[filter]==99:
+                    removed_ids.append(star["ID"])
 
-        for star in compare_cat.filled():
-            if star[filter]==99:
-                removed_ids.append(star["ID"])
+            compare_cat = compare_cat[compare_cat["dist"] < min_sep]
 
-        compare_cat = compare_cat[compare_cat["dist"] < min_sep]
-
-        for star in compare_cat.filled():
-            if star[filter] > entry[2]:
-                removed_ids.append(star["ID"])
-            elif star[filter] < entry[2]:
-                removed_ids.append(entry[3])
-                break
-            elif star[filter]==entry[2]:
-                print("UNEXPECTED CASE: IDENTICAL MAGNTIUDE")
+            for star in compare_cat.filled():
+                if star[filter] > entry[2]:
+                    removed_ids.append(star["ID"])
+                elif star[filter] < entry[2]:
+                    removed_ids.append(entry[3])
+                    break
+                elif star[filter]==entry[2]:
+                    print("UNEXPECTED CASE: IDENTICAL MAGNTIUDE")
     removed_ids=np.unique(removed_ids)
     exclude_cat=catalogue[np.isin(catalogue["ID"],removed_ids)]
     catalogue=catalogue[np.isin(catalogue["ID"],removed_ids,invert=True)]
@@ -124,9 +128,16 @@ def local_peak(data,cat_pos,width,edge):
         high_x+=1
     if (high_y-low_y)%2 == 0:
         high_y+=1
-
+    if high_y>edge:
+        high_y=edge
+        low_y-=1
+    if high_x>edge:
+        high_x=edge
+        low_x-=1
+    
 
     center=[(high_x-low_x)/2,(high_y-low_y)/2]
+
 
 
     clip_data=data[low_y:high_y,low_x:high_x]
@@ -144,26 +155,27 @@ def local_peak(data,cat_pos,width,edge):
     ps1_apps.plot(color='green',lw=1.5,alpha=0.5)
     plt.show()
     """
-
-
     return (star_pos-center)+cat_pos
 
 
-
+def cosmic_ray_reduce(ccd_image,read_noise):
+    new_ccd=ccdp.cosmicray_lacosmic(ccd_image,readnoise=read_noise,sigclip=10)
+    return new_ccd
 
 
 
 root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
-vizier = Vizier() # this instantiates Vizier with its default parameters
+vizier = Vizier(row_limit=-1) # this instantiates Vizier with its default parameters
 Vizier.clear_cache()
 
 
-tgt_name="31P"
+tgt_name="P113"
 filter="R#642"
 pix_size=0.24  #size of a pixel in arcseconds
-star_cell_size=10 #half width of the cell used for star detection around a PS1 entry
+star_cell_size=15 #half width of the cell used for star detection around a PS1 entry
+
 
 #Load pixel mask and target image
 mask=CT.load_bad_pixel_mask(calib_path)  
@@ -172,7 +184,24 @@ with fits.open(hdu_path) as img:
     data=img[0].data
     hdu=img[0]
     img_wcs=WCS(img[0].header)
+    read_noise=float(hdu.header["HIERARCH ESO DET OUT1 RON".lower()])
+    gain=float(hdu.header["HIERARCH ESO DET OUT1 CONAD".lower()])
+try:
+    if hdu.header["plate_solved"]==False:
+        raise Not_plate_solved({"message":"ERROR: IMAGE HAS NOT BEEN PLATE SOLVED","img_name" : str(hdu_path.name)})
+except Not_plate_solved as exp:
+    detail = exp.args[0]
+    print(detail["message"]+" - "+detail["img_name"])
+    exit()
+
 ccd_data=CCDData.read(calib_path/get_image_file(calib_path,tgt_name,filter))
+
+ccdp.gain_correct(ccd_data, gain * u.electron / u.adu)
+
+#CT.show_image(ccd_data,log_plt=True)
+cosmic_rayless=cosmic_ray_reduce(ccd_data,read_noise)
+
+
 
 
 field_span=len(data[:,1]) #calulate the width of the image in pixels
@@ -191,7 +220,7 @@ data=data-bkg.background
 
 #Catalogue query for PS1 stars in the image
 print("Searching Catalogue")
-catalogue = vizier.query_region(img_wcs.pixel_to_world(416,416),width="4m",catalog="II/349/ps1")[0]
+catalogue = vizier.query_region(img_wcs.pixel_to_world(412,412),width="4m",catalog="II/349/ps1")[0]
 catalogue.add_column(np.linspace(0,len(catalogue)-1,num=len(catalogue)),name="ID")
 print("Catalogue Imported")
 
