@@ -8,7 +8,7 @@ import ccdproc as ccdp
 root_dir = pathlib.Path(__file__).resolve().parent
 
 px_scale=0.24
-tgt_name="74P"
+tgt_name="149P"
 filter="R#642"
 
 trim_tags=["HIERARCH ESO DET OUT1 PRSCX","HIERARCH ESO DET OUT1 PRSCY","HIERARCH ESO DET OUT1 OVSCX","HIERARCH ESO DET OUT1 OVSCY"]
