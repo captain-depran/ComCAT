@@ -47,23 +47,23 @@ def get_image_file(calib_path,tgt,filter):
     criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
     science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt+"_"+filter+"*")
     science_files=science.files_filtered(**criteria)
-    return science_files[2]
+    return science_files[0]
 
 def catalogue_filter(catalogue,min_sep):
     min_sep=min_sep/60/60
     removed_ids=[]
-    filter="imag"
+    filter="rmag"
 
     catalogue[filter].fill_value = 99
 
-    for n,entry in zip(range(0,len(catalogue.values())),catalogue.iterrows("RAJ2000","DEJ2000",filter,"ID")):
+    for n,entry in zip(range(0,len(catalogue.values())),catalogue.iterrows("RA_ICRS","DE_ICRS",filter,"ID")):
         compare_cat=catalogue.copy()
         catalogue[filter].fill_value = 99
-        compare_cat.keep_columns(["RAJ2000","DEJ2000",filter,"ID"])
+        compare_cat.keep_columns(["RA_ICRS","DE_ICRS",filter,"ID"])
         compare_cat.remove_row(n)
-        compare_cat["RAJ2000"]-=entry[0]
-        compare_cat["DEJ2000"]-=entry[1]
-        distance=np.sqrt((compare_cat["RAJ2000"].value**2)+(compare_cat["DEJ2000"].value**2))
+        compare_cat["RA_ICRS"]-=entry[0]
+        compare_cat["DE_ICRS"]-=entry[1]
+        distance=np.sqrt((compare_cat["RA_ICRS"].value**2)+(compare_cat["DE_ICRS"].value**2))
         compare_cat.add_column(distance,name="dist")
         compare_cat.sort("dist")
         if entry[2]==99:
@@ -91,7 +91,7 @@ def catalogue_filter(catalogue,min_sep):
 
 def catalogue_pos_parse(catalogue,wcs,field_span):
     ids=[]
-    ps1_pos=np.transpose((catalogue["RAJ2000"],catalogue["DEJ2000"]))
+    ps1_pos=np.transpose((catalogue["RA_ICRS"],catalogue["DE_ICRS"]))
     big_ps1_pix=np.transpose(wcs.world_to_pixel(coords.SkyCoord(ra=ps1_pos[:,0],dec=ps1_pos[:,1],unit="deg",frame="fk5")))
     ps1_pix=[]
     for id,n in zip(catalogue["ID"].value,range(0,len(big_ps1_pix))):
@@ -172,10 +172,10 @@ vizier = Vizier(row_limit=-1) # this instantiates Vizier with its default parame
 Vizier.clear_cache()
 
 
-tgt_name="P29"
+tgt_name="74P"
 filter="R#642"
 pix_size=0.24  #size of a pixel in arcseconds
-star_cell_size=15 #half width of the cell used for star detection around a PS1 entry
+star_cell_size=10 #half width of the cell used for star detection around a PS1 entry
 
 
 #Load pixel mask and target image
@@ -223,9 +223,10 @@ data=data-bkg.background
 print("Searching Catalogue")
 catalogue = vizier.query_region(img_wcs.pixel_to_world(412,412),
                                 width="4m",
-                                catalog="II/349/ps1",
-                                column_filters={'gmag': '!=','rmag': '!=','imag': '!='})[0]
+                                catalog="J/ApJ/867/105/refcat2",
+                                column_filters={'gmag': '!=','rmag': '!='})[0]
 catalogue.add_column(np.linspace(0,len(catalogue)-1,num=len(catalogue)),name="ID")
+print(catalogue)
 print("Catalogue Imported")
 
 
