@@ -7,16 +7,14 @@ import numpy as np
 
 import pathlib
 
-from ccdproc import ImageFileCollection,Combiner
+from ccdproc import ImageFileCollection
 import ccdproc as ccdp
 
-from photutils.detection import IRAFStarFinder,find_peaks
-from photutils.aperture import CircularAperture
+from photutils.aperture import CircularAperture,aperture_photometry,CircularAnnulus,ApertureStats
 from photutils.background import Background2D, MedianBackground
 from photutils.psf import fit_2dgaussian as fit_gauss
 
-from astropy.visualization import SqrtStretch,SinhStretch
-from astropy.visualization.mpl_normalize import ImageNormalize
+from astropy.table import Table
 from astropy.nddata import CCDData
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -41,7 +39,11 @@ def get_image_data(calib_path,tgt,filter):
         data=img[0].data
     return data
 
-
+def get_image_files(calib_path,tgt,filter):
+    criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
+    science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt+"_"+filter+"*")
+    science_files=science.files_filtered(**criteria)
+    return science_files
 
 def get_image_file(calib_path,tgt,filter):
     criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
@@ -49,8 +51,8 @@ def get_image_file(calib_path,tgt,filter):
     science_files=science.files_filtered(**criteria)
     return science_files[0]
 
-def catalogue_filter(catalogue,min_sep):
-    min_sep=min_sep/60/60
+def catalogue_filter(catalogue,min_sep_deg):
+    min_sep=min_sep_deg/60/60
     removed_ids=[]
     filter="rmag"
 
@@ -89,13 +91,15 @@ def catalogue_filter(catalogue,min_sep):
     return catalogue,exclude_cat
         
 
-def catalogue_pos_parse(catalogue,wcs,field_span):
+def catalogue_pos_parse(catalogue,wcs,field_span,edge_pad):
     ids=[]
+    field_span-=edge_pad
+
     ps1_pos=np.transpose((catalogue["RA_ICRS"],catalogue["DE_ICRS"]))
     big_ps1_pix=np.transpose(wcs.world_to_pixel(coords.SkyCoord(ra=ps1_pos[:,0],dec=ps1_pos[:,1],unit="deg",frame="fk5")))
     ps1_pix=[]
     for id,n in zip(catalogue["ID"].value,range(0,len(big_ps1_pix))):
-        if big_ps1_pix[n,0] < 0 or big_ps1_pix[n,0] > field_span or big_ps1_pix[n,1] < 0 or big_ps1_pix[n,1] > field_span:
+        if big_ps1_pix[n,0] < edge_pad or big_ps1_pix[n,0] > field_span or big_ps1_pix[n,1] < edge_pad or big_ps1_pix[n,1] > field_span:
             pass
         else:
             ps1_pix.append(big_ps1_pix[n,:])
@@ -172,100 +176,157 @@ vizier = Vizier(row_limit=-1) # this instantiates Vizier with its default parame
 Vizier.clear_cache()
 
 
-tgt_name="74P"
+tgt_name="149P"
 filter="R#642"
 pix_size=0.24  #size of a pixel in arcseconds
 star_cell_size=10 #half width of the cell used for star detection around a PS1 entry
 
+app_rad = 6
+ann_in = 1.5
+ann_out = 2
+
+edge_pad=2 * ann_out * app_rad #introduces padding at the edge scaled to aperture size
 
 #Load pixel mask and target image
-mask=CT.load_bad_pixel_mask(calib_path)  
-hdu_path=pathlib.Path(calib_path/get_image_file(calib_path,tgt_name,filter))
-with fits.open(hdu_path) as img:
-    data=img[0].data
-    hdu=img[0]
-    img_wcs=WCS(img[0].header)
-    read_noise=float(hdu.header["HIERARCH ESO DET OUT1 RON".lower()])
-    gain=float(hdu.header["HIERARCH ESO DET OUT1 CONAD".lower()])
-try:
-    if hdu.header["plate_solved"]==False:
-        raise Not_plate_solved({"message":"ERROR: IMAGE HAS NOT BEEN PLATE SOLVED","img_name" : str(hdu_path.name)})
-except Not_plate_solved as exp:
-    detail = exp.args[0]
-    print(detail["message"]+" - "+detail["img_name"])
-    exit()
+R_r=[]
+gr=[]
+for file in get_image_files(calib_path,tgt_name,filter):
+    mask=CT.load_bad_pixel_mask(calib_path)
+    hdu_path=pathlib.Path(calib_path/file)
+    with fits.open(hdu_path) as img:
+        data=img[0].data
+        hdu=img[0]
+        img_wcs=WCS(img[0].header)
+        read_noise=float(hdu.header["HIERARCH ESO DET OUT1 RON".lower()])
+        gain=float(hdu.header["HIERARCH ESO DET OUT1 CONAD".lower()])
+    try:
+        if hdu.header["plate_solved"]==False:
+            raise Not_plate_solved({"message":"ERROR: IMAGE HAS NOT BEEN PLATE SOLVED","img_name" : str(hdu_path.name)})
+    except Not_plate_solved as exp:
+        detail = exp.args[0]
+        print(detail["message"]+" - "+detail["img_name"])
+        exit()
 
-ccd_data=CCDData.read(calib_path/get_image_file(calib_path,tgt_name,filter))
+    exptime=hdu.header["exptime"]
 
-ccdp.gain_correct(ccd_data, gain * u.electron / u.adu)
+    ccd_data=CCDData.read(calib_path/get_image_file(calib_path,tgt_name,filter))
 
-#CT.show_image(ccd_data,log_plt=True)
-cosmic_rayless=cosmic_ray_reduce(ccd_data,read_noise)
+    ccdp.gain_correct(ccd_data, gain * u.electron / u.adu)
 
-
-
-
-field_span=len(data[:,1]) #calulate the width of the image in pixels
-
-
-#Background estimation, using Photutils
-mean, median, std = sig(data, sigma=3.0)
-data[mask]=median
-
-sigma_clip = SigmaClip(sigma=3.0)
-bkg_estimator = MedianBackground()
-bkg = Background2D(data, (20, 20), filter_size=(3, 3),
-                    sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
-data=data-bkg.background
+    #CT.show_image(ccd_data,log_plt=True)
+    cosmic_rayless=cosmic_ray_reduce(ccd_data,read_noise)
 
 
-#Catalogue query for PS1 stars in the image
-print("Searching Catalogue")
-catalogue = vizier.query_region(img_wcs.pixel_to_world(412,412),
-                                width="4m",
-                                catalog="J/ApJ/867/105/refcat2",
-                                column_filters={'gmag': '!=','rmag': '!='})[0]
-catalogue.add_column(np.linspace(0,len(catalogue)-1,num=len(catalogue)),name="ID")
-print(catalogue)
-print("Catalogue Imported")
 
 
-#Scan the catalogue for incidents where two entries would have two overlaping star-finder cells, and select the brightest
-catalogue,exclude_cat=catalogue_filter(catalogue,2*star_cell_size*pix_size)  
-
-#Generate pixel coordinates for the included and excluded catalogue entries
-ps1_pix,in_ids=catalogue_pos_parse(catalogue,img_wcs,field_span)
-exc_pix,ex_ids=catalogue_pos_parse(exclude_cat,img_wcs,field_span)
-catalogue=catalogue[np.isin(catalogue["ID"],in_ids)]
-
-#Generate circular apertures around each catalgoue entry
-ps1_apps=CircularAperture(ps1_pix,r=3)
-exc_apps=CircularAperture(exc_pix,r=3)
+    field_span=len(data[:,1]) #calulate the width of the image in pixels
 
 
-positions=[]
-fwhm=[]
-for coord in ps1_pix:
-    star_pos,fwhm_fit=local_peak(data,coord,star_cell_size,field_span)
-    positions.append(star_pos)
-    fwhm.append(fwhm_fit)
+    #Background estimation, using Photutils
+    mean, median, std = sig(data, sigma=3.0)
+    data[mask]=median
 
-    
-positions=np.array(positions)
-apertures = CircularAperture(positions, r=4.0)
+    sigma_clip = SigmaClip(sigma=3.0)
+    bkg_estimator = MedianBackground()
+    bkg = Background2D(data, (20, 20), filter_size=(3, 3),
+                        sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
+    data_bkgsub=data-bkg.background
 
+    pix_err = np.sqrt(data)
+
+    #Catalogue query for PS1 stars in the image
+    print("Searching Catalogue")
+    catalogue = vizier.query_region(img_wcs.pixel_to_world(412,412),
+                                    width="4m",
+                                    catalog="J/ApJ/867/105/refcat2",
+                                    column_filters={'gmag': '!=','rmag': '!='})[0]
+    catalogue.add_column(np.linspace(0,len(catalogue)-1,num=len(catalogue)),name="ID")
+
+    print("Catalogue Imported")
+
+
+    #Scan the catalogue for incidents where two entries would have two overlaping star-finder cells, and select the brightest
+    catalogue,exclude_cat=catalogue_filter(catalogue,2*star_cell_size*pix_size)  
+
+    #Generate pixel coordinates for the included and excluded catalogue entries
+    ps1_pix,in_ids=catalogue_pos_parse(catalogue,img_wcs,field_span,edge_pad)
+    exc_pix,ex_ids=catalogue_pos_parse(exclude_cat,img_wcs,field_span,edge_pad)
+    catalogue=catalogue[np.isin(catalogue["ID"],in_ids)]
+
+    #Generate circular apertures around each catalgoue entry
+    #ps1_apps=CircularAperture(ps1_pix,r=3)
+    #exc_apps=CircularAperture(exc_pix,r=3)
+
+
+    positions=[]
+    fwhm=[]
+    for coord in ps1_pix:
+        star_pos,fwhm_fit=local_peak(data_bkgsub,coord,star_cell_size,field_span)
+        positions.append(star_pos)
+        fwhm.append(fwhm_fit)
+    positions=np.array(positions)
+
+
+    target_table=Table()
+    target_table["id"] = in_ids
+    target_table["pix_x"] = positions[:,0]
+    target_table["pix_y"] = positions[:,1]
+    target_table["fwhm"] = fwhm
+
+
+        
+
+    apertures = CircularAperture(positions, r=app_rad)
+    bkg_annulus = CircularAnnulus(positions, r_in = app_rad * ann_in, r_out = app_rad * ann_out)
+
+    no_app_mask=mask.data
+
+    for app_mask in apertures.to_mask():
+        app_mask=app_mask.to_image(mask.data.shape,dtype = bool)
+        mask.data = np.ma.mask_or(mask.data,app_mask)
+
+        #mask.data = app_mask.cutout(mask.data,fill_value=True)
+
+    phot_table = aperture_photometry(data,apertures,mask=no_app_mask,error=pix_err)
+    bkg_app_stats = ApertureStats(data,bkg_annulus,error=pix_err,mask=mask.data)
+
+
+    bkg_mean  = bkg_app_stats.mean
+    aperture_area = apertures.area_overlap(data,mask=no_app_mask)
+    total_bkg=bkg_mean*aperture_area
+
+    target_table["app_sum"] = phot_table["aperture_sum"] - total_bkg
+
+    target_table["mag"] = -2.5*np.log10(target_table["app_sum"]/exptime)
+
+    target_table["R-r"] = target_table["mag"] - catalogue["rmag"]
+    target_table["g-r"] = catalogue["gmag"] - catalogue["rmag"]
+
+    median = np.median(target_table["R-r"])
+
+    target_table["Scaled R-r"]=target_table["R-r"]-median
+    for entry_R,entry_gr in zip(target_table["Scaled R-r"],target_table["g-r"]):
+        R_r.append(entry_R)
+        gr.append(entry_gr)
+
+plt.scatter(gr,R_r)
+plt.xlabel("g - r (Mag)")
+plt.ylabel("R - r (Mag)")
+plt.show()
 
 #norm = ImageNormalize(stretch=SinhStretch(),clip=False)
 
-
-plt.imshow(data+bkg.background, cmap='grey', origin='lower', norm=LogNorm())
+"""
+plt.imshow(data, cmap='grey', origin='lower', norm=LogNorm())
 apertures.plot(color='blue', lw=1.5, alpha=0.5)
-ps1_apps.plot(color='green',lw=1.5,alpha=0.5)
-exc_apps.plot(color='red',lw=1.5,alpha=0.5)
+bkg_annulus.plot(color='blue', lw=1.5, alpha=0.5)
+#ps1_apps.plot(color='green',lw=1.5,alpha=0.5)
+#exc_apps.plot(color='red',lw=1.5,alpha=0.5)
 plt.xlim(0,824)
 plt.ylim(0,824)
 plt.show()
-
-
+"""
+"""
 plt.hist(fwhm,bins=30,range=[2,15])
 plt.show()
+"""
