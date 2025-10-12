@@ -4,7 +4,7 @@ import calibration_tools as CT
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 import numpy as np
-
+from tqdm import tqdm
 import pathlib
 
 from ccdproc import ImageFileCollection
@@ -30,6 +30,11 @@ from astropy.stats import sigma_clipped_stats, SigmaClip
 
 class Not_plate_solved(Exception):
     pass
+
+
+def mag_error(count_error,count,exptime):
+    err = 2.5/np.log(10) * (count_error/count)
+    return np.abs(err)
 
 
 def get_image_data(calib_path,tgt,filter):
@@ -190,8 +195,14 @@ edge_pad=2 * ann_out * app_rad #introduces padding at the edge scaled to apertur
 #Load pixel mask and target image
 R_r=[]
 gr=[]
-for file in get_image_files(calib_path,tgt_name,filter):
-    mask=CT.load_bad_pixel_mask(calib_path)
+R_r_err=[]
+
+first_pass=True
+pix_mask=CT.load_bad_pixel_mask(calib_path)
+mask=pix_mask
+pixel_mask_data=np.array(pix_mask.data)
+for file in tqdm(get_image_files(calib_path,tgt_name,filter)):
+    mask.data=pixel_mask_data
     hdu_path=pathlib.Path(calib_path/file)
     with fits.open(hdu_path) as img:
         data=img[0].data
@@ -225,24 +236,24 @@ for file in get_image_files(calib_path,tgt_name,filter):
     #Background estimation, using Photutils
     mean, median, std = sig(data, sigma=3.0)
     data[mask]=median
+    data[data<0]=median
 
     sigma_clip = SigmaClip(sigma=3.0)
     bkg_estimator = MedianBackground()
     bkg = Background2D(data, (20, 20), filter_size=(3, 3),
                         sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
     data_bkgsub=data-bkg.background
-
     pix_err = np.sqrt(data)
 
     #Catalogue query for PS1 stars in the image
-    print("Searching Catalogue")
+    #print("Searching Catalogue")
     catalogue = vizier.query_region(img_wcs.pixel_to_world(412,412),
                                     width="4m",
                                     catalog="J/ApJ/867/105/refcat2",
                                     column_filters={'gmag': '!=','rmag': '!='})[0]
     catalogue.add_column(np.linspace(0,len(catalogue)-1,num=len(catalogue)),name="ID")
 
-    print("Catalogue Imported")
+    #print("Catalogue Imported")
 
 
     #Scan the catalogue for incidents where two entries would have two overlaping star-finder cells, and select the brightest
@@ -274,12 +285,12 @@ for file in get_image_files(calib_path,tgt_name,filter):
     target_table["fwhm"] = fwhm
 
 
-        
 
     apertures = CircularAperture(positions, r=app_rad)
     bkg_annulus = CircularAnnulus(positions, r_in = app_rad * ann_in, r_out = app_rad * ann_out)
 
     no_app_mask=mask.data
+    
 
     for app_mask in apertures.to_mask():
         app_mask=app_mask.to_image(mask.data.shape,dtype = bool)
@@ -301,22 +312,28 @@ for file in get_image_files(calib_path,tgt_name,filter):
 
     target_table["R-r"] = target_table["mag"] - catalogue["rmag"]
     target_table["g-r"] = catalogue["gmag"] - catalogue["rmag"]
+    if first_pass==True:
+        offset = np.median(target_table["R-r"])
+        first_pass=False
+    target_table["Scaled R-r"]=target_table["R-r"]-offset
+    target_table["R-r error"]=mag_error((phot_table['aperture_sum_err']+(bkg_app_stats.std/np.sqrt(bkg_app_stats.sum_aper_area.value))),
+                                        target_table["app_sum"],
+                                        exptime)
 
-    median = np.median(target_table["R-r"])
-
-    target_table["Scaled R-r"]=target_table["R-r"]-median
-    for entry_R,entry_gr in zip(target_table["Scaled R-r"],target_table["g-r"]):
+    for entry_R,entry_gr,R_err in zip(target_table["Scaled R-r"],target_table["g-r"],target_table["R-r error"]):
         R_r.append(entry_R)
         gr.append(entry_gr)
+        R_r_err.append(R_err)
 
-plt.scatter(gr,R_r)
+
+plt.errorbar(gr,R_r,yerr=R_r_err,fmt='.')
 plt.xlabel("g - r (Mag)")
 plt.ylabel("R - r (Mag)")
 plt.show()
-
+#print(target_table.more())
 #norm = ImageNormalize(stretch=SinhStretch(),clip=False)
 
-"""
+
 plt.imshow(data, cmap='grey', origin='lower', norm=LogNorm())
 apertures.plot(color='blue', lw=1.5, alpha=0.5)
 bkg_annulus.plot(color='blue', lw=1.5, alpha=0.5)
@@ -325,7 +342,7 @@ bkg_annulus.plot(color='blue', lw=1.5, alpha=0.5)
 plt.xlim(0,824)
 plt.ylim(0,824)
 plt.show()
-"""
+
 """
 plt.hist(fwhm,bins=30,range=[2,15])
 plt.show()
