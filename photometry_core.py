@@ -246,7 +246,7 @@ class colour_calib_frame:
         self.target_table["pix_pos"] = positions
         self.target_table["fwhm"] = fwhm
 
-    def ap_phot(self,app_rad,ann_in,ann_out):
+    def ap_phot(self,app_rad,ann_in,ann_out,plot=False,*args,**kwargs):
 
         positions=self.target_table["pix_pos"]
         apertures = CircularAperture(positions, r=app_rad)
@@ -255,13 +255,13 @@ class colour_calib_frame:
         """
         Below is 'emergency' plotting of each frame and its apertures
         """
-        """
-        plt.imshow(self.frame.data, cmap='grey', origin='lower', norm=LogNorm())
-        apertures.plot(color='blue', lw=1.5, alpha=0.5)
-        plt.xlim(0,824)
-        plt.ylim(0,824)
-        plt.show()
-        """
+        if plot==True:
+            plt.imshow(self.frame.data, cmap='grey', origin='lower', norm=LogNorm())
+            apertures.plot(color='blue', lw=1.5, alpha=0.5)
+            bkg_annulus.plot(color='blue', lw=1.5, alpha=0.5)
+            plt.xlim(0,824)
+            plt.ylim(0,824)
+            plt.show()
 
         no_app_mask=self.mask.data
         for app_mask in apertures.to_mask():
