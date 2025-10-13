@@ -248,6 +248,10 @@ class colour_calib_frame:
 
     def ap_phot(self,app_rad,ann_in,ann_out,plot=False,*args,**kwargs):
 
+        """
+        Performs aperture photometry, with local background subtraction. Background is estimated using 
+        """
+
         positions=self.target_table["pix_pos"]
         apertures = CircularAperture(positions, r=app_rad)
         bkg_annulus = CircularAnnulus(positions, r_in = app_rad * ann_in, r_out = app_rad * ann_out)
