@@ -10,7 +10,7 @@ root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
-tgt_name="149P"
+tgt_name="P2004F3"
 filter="R#642"
 cat_filter="rmag"
 pix_size=0.24  #size of a pixel in arcseconds
