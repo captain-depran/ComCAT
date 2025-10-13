@@ -43,6 +43,8 @@ gr=[]
 mask=pix_mask
 pixel_mask_data=np.array(pix_mask.data)
 
+first=True
+
 for image_name in tqdm(all_image_names):
     pix_mask.data=pixel_mask_data
     img=photo_core.ESO_image(calib_path,image_name)
@@ -53,10 +55,17 @@ for image_name in tqdm(all_image_names):
                                                 colour_median=colour_median)
     
     subject_frame.star_fitter(star_cell_size)
+    if first == True:
+        subject_frame.ap_phot(app_rad,
+                            ann_in,
+                            ann_out,
+                            plot=True)
+        first=False
+    else:
+        subject_frame.ap_phot(app_rad,
+                    ann_in,
+                    ann_out)
 
-    subject_frame.ap_phot(app_rad,
-                          ann_in,
-                          ann_out)
     
     R_r,gr = subject_frame.colour_compare(R_r,gr)
 
