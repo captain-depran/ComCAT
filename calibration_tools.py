@@ -216,6 +216,22 @@ def batch_plate_solve(dir,file_list,px_scale):
             print(file)
 
 
+def allign_and_avgstack(images,wcs):
+    reprojected=[]
+    n_max=99
+    n=0
+
+    for img in images.ccds():
+        n+=1
+        new_image=wcs_project(img,wcs)
+        reprojected.append(new_image)
+        if n>=n_max:
+            break
+
+    c = Combiner(reprojected)
+    stack= c.average_combine()
+    return stack
+
 
 #---> BELOW IS THE PIT, A PILE OF OLD DEVELOPMENT CODE KEPT FOR REFERENCE AND DEBUGGING PURPOSES, OR IN CASE I FORGET HOW TO DO SOMETHING <---
 
