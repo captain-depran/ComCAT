@@ -246,11 +246,16 @@ class colour_calib_frame:
         self.target_table["pix_pos"] = positions
         self.target_table["fwhm"] = fwhm
 
+        self.avg_fwhm=np.median(fwhm)
+        
+
     def ap_phot(self,app_rad,ann_in,ann_out,plot=False,*args,**kwargs):
 
         """
         Performs aperture photometry, with local background subtraction. Background is estimated using 
         """
+
+        app_rad=self.avg_fwhm*2
 
         positions=self.target_table["pix_pos"]
         apertures = CircularAperture(positions, r=app_rad)
@@ -281,7 +286,11 @@ class colour_calib_frame:
         total_bkg=bkg_mean*aperture_area
 
         self.target_table["app_sum"] = phot_table["aperture_sum"] - total_bkg
+
+        
         valid_ids=self.target_table[self.target_table["app_sum"] > 0]["id"]
+        valid_ids.append(self.target_table[np.abs(self.target_table["fwhm"]-self.avg_fwhm) > self.avg_fwhm/2])
+
 
         self.target_table=self.target_table[np.isin(self.target_table["id"],valid_ids)]
         self.frame_catalogue=self.frame_catalogue[np.isin(self.frame_catalogue["ID"],valid_ids)]
