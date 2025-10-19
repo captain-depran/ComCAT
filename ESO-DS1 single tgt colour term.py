@@ -12,7 +12,10 @@ root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
-tgt_name="149P"
+tgt_name="P2004F3"
+
+
+
 filter="R#642"
 cat_filter="rmag"
 pix_size=0.24  #size of a pixel in arcseconds
@@ -42,6 +45,7 @@ R_r=[]
 gr=[]
 ids=[]
 grads=[]
+calib_frames=[]
 
 mask=pix_mask
 pixel_mask_data=np.array(pix_mask.data)
@@ -70,17 +74,26 @@ for image_name in (all_image_names):
                         plot=plot_this)
 
 
-    new_R_r,new_gr,id,grad = subject_frame.colour_compare()
+    new_R_r,new_gr,id,grad = subject_frame.colour_grad_fit()
+
     R_r.extend(new_R_r)
     gr.extend(new_gr)
     ids.extend(id)
     grads.append(grad)
+    calib_frames.append(subject_frame)
+
 
 
 term=np.mean(grads)
-print(term)
+
+for frame in calib_frames:
+    offset = frame.colour_zero(term)
+    
+    plt.scatter(frame.frame_catalogue["rmag"],frame.correct_R)
+plt.show()
 
 
+"""
 print("Ellapsed Time: ",time.process_time()-t)
 plt.scatter(gr,R_r)
 plt.plot(gr,np.array(gr)*term,color="r")
@@ -90,4 +103,4 @@ for x,y,id in zip(gr,R_r,ids):
     if y>1:
         plt.annotate(str(id),[x,y])
 plt.show()
-
+"""
