@@ -5,22 +5,24 @@ from tqdm import tqdm
 import numpy as np
 import pathlib
 
+import time
+
 
 root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
-tgt_name="P2004F3"
+tgt_name="149P"
 filter="R#642"
 cat_filter="rmag"
 pix_size=0.24  #size of a pixel in arcseconds
-star_cell_size=10 #half width of the cell used for star detection around a PS1 entry
+star_cell_size=5 #half width of the cell used for star detection around a PS1 entry
 
-app_rad = 6
+app_rad = 1.5 #Apperture radius is this multiplied by the average fwhm in the image
 ann_in = 1.5
 ann_out = 2
 
-edge_pad=2 * ann_out * app_rad #introduces padding at the edge scaled to aperture size
+edge_pad=20 #introduces padding at the edge 
 
 #reference img, for colour calib median and WCS
 ref_name=photo_core.get_image_file(calib_path,tgt_name,filter)
@@ -36,40 +38,56 @@ wide_cat=photo_core.field_catalogue(ref_img,
 all_image_names=photo_core.get_image_files(calib_path,tgt_name,filter)
 
 pix_mask=CT.load_bad_pixel_mask(calib_path)
-colour_median=0
 R_r=[]
 gr=[]
+ids=[]
+grads=[]
 
 mask=pix_mask
 pixel_mask_data=np.array(pix_mask.data)
 
 first=True
 
-for image_name in tqdm(all_image_names):
+t=time.process_time()
+count=0
+for image_name in (all_image_names):
+
+    plot_this=False
     pix_mask.data=pixel_mask_data
     img=photo_core.ESO_image(calib_path,image_name)
     subject_frame=photo_core.colour_calib_frame(img,
                                                 pix_mask,
                                                 edge_pad,
-                                                wide_cat,
-                                                colour_median=colour_median)
+                                                wide_cat)
     
-    subject_frame.star_fitter(star_cell_size)
-    if first == True:
-        subject_frame.ap_phot(app_rad,
-                            ann_in,
-                            ann_out,
-                            plot=True)
-        first=False
-    else:
-        subject_frame.ap_phot(app_rad,
-                    ann_in,
-                    ann_out)
+    subject_frame.star_fitter(star_cell_size,
+                              fwhm_range=0.3)
 
-    
-    R_r,gr = subject_frame.colour_compare(R_r,gr)
 
+    subject_frame.ap_phot(app_rad,
+                        ann_in,
+                        ann_out,
+                        plot=plot_this)
+
+
+    new_R_r,new_gr,id,grad = subject_frame.colour_compare()
+    R_r.extend(new_R_r)
+    gr.extend(new_gr)
+    ids.extend(id)
+    grads.append(grad)
+
+
+term=np.mean(grads)
+print(term)
+
+
+print("Ellapsed Time: ",time.process_time()-t)
 plt.scatter(gr,R_r)
+plt.plot(gr,np.array(gr)*term,color="r")
 plt.xlabel("g - r (Mag)")
 plt.ylabel("R - r (Mag)")
+for x,y,id in zip(gr,R_r,ids):
+    if y>1:
+        plt.annotate(str(id),[x,y])
 plt.show()
+
