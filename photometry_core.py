@@ -331,7 +331,7 @@ class colour_calib_frame:
         self.target_table["mag"] = -2.5*np.log10(self.target_table["app_sum"]/self.frame.exptime) #Calculate the magnitude from the aperture counts        
         
 
-    def colour_compare(self):
+    def colour_grad_fit(self):
 
         self.target_table["R-r"] = self.target_table["mag"] - self.frame_catalogue["rmag"]
         self.target_table["g-r"] = self.frame_catalogue["gmag"] - self.frame_catalogue["rmag"]
@@ -342,3 +342,13 @@ class colour_calib_frame:
         fitted_line = fit(line_init,self.target_table["g-r"].value,self.target_table["Scaled R-r"].value)
         self.colour_grad= (fitted_line(2)-fitted_line(1))
         return self.target_table["Scaled R-r"].value, self.target_table["g-r"].value, self.target_table["id"].value, self.colour_grad
+
+
+    def colour_zero(self,gradient):
+
+        correct_R = gradient * self.target_table["mag"].value
+        offset = np.median(correct_R - self.frame_catalogue["rmag"])
+
+        self.correct_R=correct_R - offset
+
+        return offset
