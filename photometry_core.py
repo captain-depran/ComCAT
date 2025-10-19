@@ -21,6 +21,7 @@ from astropy.stats import sigma_clipped_stats as sig
 import astropy.units as u
 import astropy.coordinates as coords
 from astropy.stats import sigma_clipped_stats, SigmaClip
+from astropy.modeling import fitting,models
 
 from astroquery.vizier import Vizier
 
@@ -134,23 +135,24 @@ class field_catalogue:
         catalogue.add_column(np.linspace(0,len(catalogue)-1,num=len(catalogue)),name="ID")
         print(len(catalogue["ID"])," Valid Targets Found...")
         self.whole_field,self.excluded_stars=self.catalogue_filter(catalogue,
-                                                                   (2*star_cell_size*pix_size),
+                                                                   (3*star_cell_size*pix_size),
                                                                    ref_filter)
         self.cat_pos=np.transpose((self.whole_field["RA_ICRS"],self.whole_field["DE_ICRS"]))
         print("Done!")
 
-    def catalogue_filter(self,catalogue,min_sep_deg,filter_band):
+    def catalogue_filter(self,catalogue,min_sep_AS,filter_band):
         """
         Removes stars from the catalogue that are too close together
         """
-        min_sep=min_sep_deg/60/60
+        min_sep=min_sep_AS/60/60
 
         removed_ids=[]
         filter=filter_band
 
         catalogue[filter].fill_value = 99
+        
 
-        for n,entry in zip(range(0,len(catalogue.values())),catalogue.iterrows("RA_ICRS","DE_ICRS",filter,"ID")):
+        for n,entry in zip(range(0,len(catalogue["ID"].value)),catalogue.iterrows("RA_ICRS","DE_ICRS",filter,"ID")):
             compare_cat=catalogue.copy()
             catalogue[filter].fill_value = 99
             compare_cat.keep_columns(["RA_ICRS","DE_ICRS",filter,"ID"])
@@ -212,6 +214,7 @@ class colour_calib_frame:
         self.field_span=len(self.frame.data[:,0])
         self.estimate_bkg()
         self.colour_median=colour_median
+        self.invalid_ids=[]
 
     def estimate_bkg(self):
         data=self.frame.data
@@ -227,7 +230,7 @@ class colour_calib_frame:
         self.pix_err = np.sqrt(data)
         self.frame.data=data
     
-    def star_fitter(self,star_cell_size):
+    def star_fitter(self,star_cell_size,fwhm_plot=False,fwhm_range=0.1,*args,**kwargs):
         positions=[]
         fwhm=[]
         for coord in self.cat_pix:
@@ -246,20 +249,44 @@ class colour_calib_frame:
         self.target_table["pix_pos"] = positions
         self.target_table["fwhm"] = fwhm
 
-        self.avg_fwhm=np.median(fwhm)
+        if fwhm_plot:
+            plt.hist(fwhm,bins=20)
+            plt.show()
         
 
-    def ap_phot(self,app_rad,ann_in,ann_out,plot=False,*args,**kwargs):
+
+        self.avg_fwhm=np.median(fwhm)
+        self.invalid_ids.extend(self.target_table[np.abs(self.target_table["fwhm"].value-self.avg_fwhm) > fwhm_range ]["id"].value)
+        
+
+    def remove_bad_aps(self,apertures):
+        app_stats=ApertureStats(self.frame.data,apertures,error=self.pix_err,mask=self.mask.data)
+        self.invalid_ids.extend(self.target_table[np.where(app_stats.max > 50000)]["id"].value)  #Discount any aperture that features a near-saturation pixel
+
+
+    def ap_phot(self,app_rad,ann_in,ann_out,plot_id=9999,plot=False,*args,**kwargs):
 
         """
         Performs aperture photometry, with local background subtraction. Background is estimated using 
         """
 
-        app_rad=self.avg_fwhm*2
+        app_rad=self.avg_fwhm*1.5
 
         positions=self.target_table["pix_pos"]
         apertures = CircularAperture(positions, r=app_rad)
         bkg_annulus = CircularAnnulus(positions, r_in = app_rad * ann_in, r_out = app_rad * ann_out)
+        #print("Total Apertures: ",len(apertures))
+
+        self.remove_bad_aps(apertures)
+
+        #print("Discounted Targets: ",len(self.invalid_ids))
+        no_app_mask=self.mask.data
+
+        #print(apertures)
+
+        for app_mask in apertures.to_mask():
+            app_mask=app_mask.to_image(self.mask.data.shape,dtype = bool)
+            self.mask.data = np.ma.mask_or(self.mask.data,app_mask)
 
         """
         Below is 'emergency' plotting of each frame and its apertures
@@ -270,13 +297,19 @@ class colour_calib_frame:
             bkg_annulus.plot(color='blue', lw=1.5, alpha=0.5)
             plt.xlim(0,824)
             plt.ylim(0,824)
+            for x,y,id in zip(self.target_table["pix_x"].value,self.target_table["pix_y"].value,self.target_table["id"].value):
+                plt.annotate(str(id),[x,y],color="w")
             plt.show()
 
-        no_app_mask=self.mask.data
-        for app_mask in apertures.to_mask():
-            app_mask=app_mask.to_image(self.mask.data.shape,dtype = bool)
-            self.mask.data = np.ma.mask_or(self.mask.data,app_mask)
-
+        if plot_id!=9999 and plot_id in self.target_table["id"].value:
+            plt.imshow(self.frame.data, cmap='grey', origin='lower', norm=LogNorm())
+            apertures.plot(color='blue', lw=1.5, alpha=0.5)
+            bkg_annulus.plot(color='blue', lw=1.5, alpha=0.5)
+            plt.xlim(0,824)
+            plt.ylim(0,824)
+            for x,y,id in zip(self.target_table["pix_x"].value,self.target_table["pix_y"].value,self.target_table["id"].value):
+                plt.annotate(str(id),[x,y],color="w")
+            plt.show()
 
         phot_table = aperture_photometry(self.frame.data,apertures,mask=no_app_mask,error=self.pix_err)
         bkg_app_stats = ApertureStats(self.frame.data,bkg_annulus,error=self.pix_err,mask=self.mask.data)
@@ -288,27 +321,24 @@ class colour_calib_frame:
         self.target_table["app_sum"] = phot_table["aperture_sum"] - total_bkg
 
         
-        valid_ids=self.target_table[self.target_table["app_sum"] > 0]["id"]
-        valid_ids.append(self.target_table[np.abs(self.target_table["fwhm"]-self.avg_fwhm) > self.avg_fwhm/2])
+        self.invalid_ids.extend(self.target_table[self.target_table["app_sum"] <= 0]["id"].value) #Mark any observation with a negative aperture sum as invalid
 
+        self.invalid_ids=np.unique(self.invalid_ids) #Remove any duplicate invalid IDs
 
-        self.target_table=self.target_table[np.isin(self.target_table["id"],valid_ids)]
-        self.frame_catalogue=self.frame_catalogue[np.isin(self.frame_catalogue["ID"],valid_ids)]
-        self.mag_calc()
+        self.target_table=self.target_table[np.isin(self.target_table["id"],self.invalid_ids,invert=True)] #Filter the invalids IDs from the observation list
+        self.frame_catalogue=self.frame_catalogue[np.isin(self.frame_catalogue["ID"],self.invalid_ids,invert=True)] #Filter the invalid IDs from the comparison catalogue
 
-    def mag_calc(self):
-        self.target_table["mag"] = -2.5*np.log10(self.target_table["app_sum"]/self.frame.exptime)
+        self.target_table["mag"] = -2.5*np.log10(self.target_table["app_sum"]/self.frame.exptime) #Calculate the magnitude from the aperture counts        
         
 
-    def colour_compare(self,R_r,gr):
+    def colour_compare(self):
 
         self.target_table["R-r"] = self.target_table["mag"] - self.frame_catalogue["rmag"]
         self.target_table["g-r"] = self.frame_catalogue["gmag"] - self.frame_catalogue["rmag"]
-        if self.colour_median==0:
-            offset = np.median(self.target_table["R-r"])
-            self.colour_median=offset
-        self.target_table["Scaled R-r"]=self.target_table["R-r"]-offset
-        for entry_R,entry_gr in zip(self.target_table["Scaled R-r"],self.target_table["g-r"]):
-            R_r.append(entry_R)
-            gr.append(entry_gr)
-        return R_r,gr
+        self.target_table["Scaled R-r"]=self.target_table["R-r"]-np.median(self.target_table["R-r"])
+
+        fit = fitting.LinearLSQFitter()
+        line_init = models.Linear1D()
+        fitted_line = fit(line_init,self.target_table["g-r"].value,self.target_table["Scaled R-r"].value)
+        self.colour_grad= (fitted_line(2)-fitted_line(1))
+        return self.target_table["Scaled R-r"].value, self.target_table["g-r"].value, self.target_table["id"].value, self.colour_grad
