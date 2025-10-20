@@ -9,7 +9,7 @@ root_dir = pathlib.Path(__file__).resolve().parent
 
 px_scale=0.24
 
-filter="v#641"
+filter="R#642"
 
 trim_tags=["HIERARCH ESO DET OUT1 PRSCX","HIERARCH ESO DET OUT1 PRSCY","HIERARCH ESO DET OUT1 OVSCX","HIERARCH ESO DET OUT1 OVSCY"]
 ref_image=pathlib.Path(root_dir/"Data_set_1"/"block_1"/"BIAS"/"FREE"/"EFOSC.2009-01-27T21_00_47.752.fits")
@@ -59,7 +59,8 @@ for file in tgt_lights:
                     str("fringe_comp_"+name),
                     filter,
                     mask=bad_pixel_mask)
-        
+
+print("FILES USED FOR FRINGE MAP: ",len(tgts))
 
 fringe=CT.make_fringe_map(calib_path,filter)
 
