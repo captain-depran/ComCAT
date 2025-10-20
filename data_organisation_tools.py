@@ -77,7 +77,13 @@ def sort_block(block,block_n):
     for file in block:
         copy_files(file,pathlib.Path(root_dir/"Data_set_1"),"block_"+str(block_n))
 
-
+def extract_name(path):
+    """
+    Extract the name from a fits file
+    """
+    with fits.open(path) as img:
+        object=(img[0].header['object'])
+    return object
 
 def dataset_split(full_set,threshold):
     """
