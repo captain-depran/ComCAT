@@ -232,6 +232,42 @@ def allign_and_avgstack(images,wcs):
     stack= c.average_combine()
     return stack
 
+def avgstack(images):
+    c=Combiner(images.ccds())
+    c.scaling(inv_median)
+    stack = c.median_combine()
+    return stack
+
+def make_fringe_map(calib_path,filter):
+    criteria={"ESO INS FILT1 NAME".lower():filter}
+    fringe_comp=ImageFileCollection(calib_path,keywords='*',glob_include="fringe_comp*").filter(**criteria)
+    comp_files=fringe_comp.files
+
+
+    fringe_map=avgstack(fringe_comp)
+
+    #mean, median, std = sig(fringe_map.data, sigma=3.0)
+
+    #fringe_map.data=fringe_map.data-mean
+
+    out_path=pathlib.Path(calib_path/("FRINGE_MAP_"+filter+".fits"))
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    fringe_map.write(str(out_path),overwrite=True)
+
+    img=fits.open(out_path,mode="update")
+    img[0].header.set('HIERARCH ESO INS FILT1 NAME',filter)
+    img.close()
+
+    print("FRINGE MAP SAVED AT: "+str(out_path))
+    for file in comp_files:
+        os.remove(calib_path/file)
+
+    return fringe_map
+
+    
+
+
 
 #---> BELOW IS THE PIT, A PILE OF OLD DEVELOPMENT CODE KEPT FOR REFERENCE AND DEBUGGING PURPOSES, OR IN CASE I FORGET HOW TO DO SOMETHING <---
 
