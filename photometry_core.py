@@ -20,7 +20,7 @@ from astropy.wcs import WCS
 from astropy.stats import sigma_clipped_stats as sig
 import astropy.units as u
 import astropy.coordinates as coords
-from astropy.stats import sigma_clipped_stats, SigmaClip
+from astropy.stats import sigma_clipped_stats, SigmaClip,sigma_clip
 from astropy.modeling import fitting,models
 
 from astroquery.vizier import Vizier
@@ -338,17 +338,16 @@ class colour_calib_frame:
         self.target_table["Scaled R-r"]=self.target_table["R-r"]-np.median(self.target_table["R-r"])
 
         fit = fitting.LinearLSQFitter()
+        or_fit = fitting.FittingWithOutlierRemoval(fit, sigma_clip, niter=3, sigma=3.0)
         line_init = models.Linear1D()
-        fitted_line = fit(line_init,self.target_table["g-r"].value,self.target_table["Scaled R-r"].value)
-        self.colour_grad= (fitted_line(2)-fitted_line(1))
-        return self.target_table["Scaled R-r"].value, self.target_table["g-r"].value, self.target_table["id"].value, self.colour_grad
 
+        fitted_line,mask = or_fit(line_init,self.target_table["g-r"].value,self.target_table["Scaled R-r"].value)
+        filtered_data=np.ma.masked_array(self.target_table["Scaled R-r"].value,mask=mask)
+        self.colour_grad = (fitted_line(2)-fitted_line(1))
+        return self.target_table["Scaled R-r"].value, self.target_table["g-r"].value, self.target_table["id"].value, self.colour_grad,filtered_data
 
     def colour_zero(self,gradient):
-
-        correct_R = gradient * self.target_table["mag"].value
-        offset = np.median(correct_R - self.frame_catalogue["rmag"])
-
-        self.correct_R=correct_R - offset
-
+        offset = np.mean(self.target_table["R-r"].value - gradient * self.target_table["g-r"].value)
+        self.zero_term=offset
         return offset
+    
