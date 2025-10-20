@@ -234,7 +234,7 @@ def allign_and_avgstack(images,wcs):
 
 def avgstack(images):
     c=Combiner(images.ccds())
-    c.scaling(inv_median)
+    c.scaling = inv_median
     stack = c.median_combine()
     return stack
 
