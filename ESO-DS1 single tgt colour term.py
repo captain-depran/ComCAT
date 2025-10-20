@@ -74,27 +74,31 @@ for image_name in (all_image_names):
                         plot=plot_this)
 
 
-    new_R_r,new_gr,id,grad = subject_frame.colour_grad_fit()
+    new_R_r,new_gr,id,grad,filtered_R_r = subject_frame.colour_grad_fit()
 
-    R_r.extend(new_R_r)
+
+    R_r.extend(filtered_R_r)
     gr.extend(new_gr)
     ids.extend(id)
     grads.append(grad)
     calib_frames.append(subject_frame)
 
+print("Ellapsed Time: ",time.process_time()-t)
+#plt.scatter(gr,R_r)
+#plt.show()
+print(np.median(grads))
+term=np.median(grads)
 
-
-term=np.mean(grads)
 
 for frame in calib_frames:
     offset = frame.colour_zero(term)
-    
-    plt.scatter(frame.frame_catalogue["rmag"],frame.correct_R)
+    plt.scatter(frame.target_table["mag"]-offset,frame.frame_catalogue["rmag"])
+    #plt.scatter(frame.target_table["g-r"],frame.target_table["R-r"])
+    #plt.plot(gr,(np.array(gr)*term)+offset)
 plt.show()
-
+    
 
 """
-print("Ellapsed Time: ",time.process_time()-t)
 plt.scatter(gr,R_r)
 plt.plot(gr,np.array(gr)*term,color="r")
 plt.xlabel("g - r (Mag)")
@@ -103,4 +107,5 @@ for x,y,id in zip(gr,R_r,ids):
     if y>1:
         plt.annotate(str(id),[x,y])
 plt.show()
+
 """
