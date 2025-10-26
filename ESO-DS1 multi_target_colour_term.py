@@ -72,7 +72,7 @@ for tgt_name in tgt_names:
                             plot=plot_this)
 
 
-        new_R_r,new_gr,id,grad,filtered_R_r = subject_frame.colour_grad_fit()
+        new_R_r,new_gr,id,grad,filtered_R_r,mag_errors = subject_frame.colour_grad_fit()
         #print("Filtered Points: ",np.sum(filtered_R_r.mask))
         R_r.extend(new_R_r)
         #gr.extend(new_gr)
