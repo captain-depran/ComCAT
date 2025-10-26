@@ -210,7 +210,7 @@ class colour_calib_frame:
     def __init__(self,img,mask,edge_pad,field_catalogue,colour_median=0,*args, **kwargs):
         self.mask=mask
         self.cat_pix,self.cat_ids,self.frame_catalogue=field_catalogue.field_section(img,edge_pad)
-        self.frame=img
+        self.frame=img  #An instance of the ESO_image object, or different observatory configured image
         self.field_span=len(self.frame.data[:,0])
         self.estimate_bkg()
         self.colour_median=colour_median
@@ -263,11 +263,25 @@ class colour_calib_frame:
         app_stats=ApertureStats(self.frame.data,apertures,error=self.pix_err,mask=self.mask.data)
         self.invalid_ids.extend(self.target_table[np.where(app_stats.max > 50000)]["id"].value)  #Discount any aperture that features a near-saturation pixel
 
+    def ap_error(self,app_sum,sky_bkg,app_area):
+        gain=self.frame.gain
+        t=self.frame.exptime
+        n_pix=app_area 
+        n_star=app_sum*gain
+        n_sky=sky_bkg*gain
+        n_r=self.frame.read_noise
+
+        noise=np.sqrt(n_star+n_pix*(n_sky+n_r**2))
+        signal=n_star
+
+        return (signal/noise)
+
+
 
     def ap_phot(self,app_rad,ann_in,ann_out,plot_id=9999,plot=False,*args,**kwargs):
 
         """
-        Performs aperture photometry, with local background subtraction. Background is estimated using 
+        Performs aperture photometry, with local background subtraction. Background is estimated using local sky annulus
         """
 
         app_rad=self.avg_fwhm*1.5
@@ -311,16 +325,21 @@ class colour_calib_frame:
                 plt.annotate(str(id),[x,y],color="w")
             plt.show()
 
-        phot_table = aperture_photometry(self.frame.data,apertures,mask=no_app_mask,error=self.pix_err)
-        bkg_app_stats = ApertureStats(self.frame.data,bkg_annulus,error=self.pix_err,mask=self.mask.data)
+
+        phot_table = aperture_photometry(self.frame.data,apertures,mask=no_app_mask)
+        bkg_app_stats = ApertureStats(self.frame.data,bkg_annulus,mask=self.mask.data)
 
         bkg_mean  = bkg_app_stats.mean
         aperture_area = apertures.area_overlap(self.frame.data,mask=no_app_mask)
+
         total_bkg=bkg_mean*aperture_area
+       
 
         self.target_table["app_sum"] = phot_table["aperture_sum"] - total_bkg
 
-        
+        self.target_table["SNR"] = self.ap_error(self.target_table["app_sum"],total_bkg,aperture_area)
+
+
         self.invalid_ids.extend(self.target_table[self.target_table["app_sum"] <= 0]["id"].value) #Mark any observation with a negative aperture sum as invalid
 
         self.invalid_ids=np.unique(self.invalid_ids) #Remove any duplicate invalid IDs
@@ -329,7 +348,7 @@ class colour_calib_frame:
         self.frame_catalogue=self.frame_catalogue[np.isin(self.frame_catalogue["ID"],self.invalid_ids,invert=True)] #Filter the invalid IDs from the comparison catalogue
 
         self.target_table["mag"] = -2.5*np.log10(self.target_table["app_sum"]/self.frame.exptime) #Calculate the magnitude from the aperture counts        
-        
+        self.target_table["mag_error"] = (2.5/np.log(10)) * (1/self.target_table["SNR"])
 
     def colour_grad_fit(self):
 
@@ -344,7 +363,7 @@ class colour_calib_frame:
         fitted_line,mask = or_fit(line_init,self.target_table["g-r"].value,self.target_table["Scaled R-r"].value)
         filtered_data=np.ma.masked_array(self.target_table["Scaled R-r"].value,mask=mask)
         self.colour_grad = (fitted_line(2)-fitted_line(1))
-        return self.target_table["Scaled R-r"].value, self.target_table["g-r"].value, self.target_table["id"].value, self.colour_grad,filtered_data
+        return self.target_table["Scaled R-r"].value, self.target_table["g-r"].value, self.target_table["id"].value, self.colour_grad,filtered_data,self.target_table["mag_error"]
 
     def colour_zero(self,gradient):
         offset = np.mean(self.target_table["R-r"].value - gradient * self.target_table["g-r"].value)

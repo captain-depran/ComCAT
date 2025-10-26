@@ -46,6 +46,7 @@ gr=[]
 ids=[]
 grads=[]
 calib_frames=[]
+mag_errors=[]
 
 mask=pix_mask
 pixel_mask_data=np.array(pix_mask.data)
@@ -74,7 +75,7 @@ for image_name in (all_image_names):
                         plot=plot_this)
 
 
-    new_R_r,new_gr,id,grad,filtered_R_r = subject_frame.colour_grad_fit()
+    new_R_r,new_gr,id,grad,filtered_R_r,mag_error = subject_frame.colour_grad_fit()
 
 
     R_r.extend(filtered_R_r)
@@ -82,6 +83,7 @@ for image_name in (all_image_names):
     ids.extend(id)
     grads.append(grad)
     calib_frames.append(subject_frame)
+    mag_errors.extend(mag_error)
 
 print("Ellapsed Time: ",time.process_time()-t)
 #plt.scatter(gr,R_r)
