@@ -360,7 +360,7 @@ class colour_calib_frame:
         or_fit = fitting.FittingWithOutlierRemoval(fit, sigma_clip, niter=3, sigma=3.0)
         line_init = models.Linear1D()
 
-        fitted_line,mask = or_fit(line_init,self.target_table["g-r"].value,self.target_table["Scaled R-r"].value)
+        fitted_line,mask = or_fit(line_init,self.target_table["g-r"].value,self.target_table["Scaled R-r"].value,weights=1/self.target_table["mag_error"])
         filtered_data=np.ma.masked_array(self.target_table["Scaled R-r"].value,mask=mask)
         self.colour_grad = (fitted_line(2)-fitted_line(1))
         return self.target_table["Scaled R-r"].value, self.target_table["g-r"].value, self.target_table["id"].value, self.colour_grad,filtered_data,self.target_table["mag_error"]

@@ -94,7 +94,8 @@ term=np.median(grads)
 
 for frame in calib_frames:
     offset = frame.colour_zero(term)
-    plt.scatter(frame.target_table["mag"]-offset,frame.frame_catalogue["rmag"])
+    #plt.scatter(frame.target_table["mag"]-offset,frame.frame_catalogue["rmag"])
+    plt.errorbar(frame.target_table["g-r"],frame.target_table["Scaled R-r"],yerr=frame.target_table["mag_error"],fmt=".")
     #plt.scatter(frame.target_table["g-r"],frame.target_table["R-r"])
     #plt.plot(gr,(np.array(gr)*term)+offset)
 plt.show()

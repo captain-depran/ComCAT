@@ -87,7 +87,8 @@ print (term)
 
 for frame in calib_frames:
     offset = frame.colour_zero(term)
-    plt.scatter(frame.target_table["mag"]-offset,frame.frame_catalogue["rmag"])
+    plt.errorbar(frame.frame_catalogue["rmag"],frame.target_table["mag"]-offset,yerr=frame.target_table["mag_error"],fmt="k.")
+plt.plot(calib_frames[0].frame_catalogue["rmag"],(term*calib_frames[0].frame_catalogue["rmag"])-offset)
 plt.show()
 
 
