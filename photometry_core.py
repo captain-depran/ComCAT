@@ -22,8 +22,10 @@ import astropy.units as u
 import astropy.coordinates as coords
 from astropy.stats import sigma_clipped_stats, SigmaClip,sigma_clip
 from astropy.modeling import fitting,models
+from astropy.time import Time
 
 from astroquery.vizier import Vizier
+from astroquery.jplhorizons import Horizons
 
 
 
@@ -370,3 +372,33 @@ class colour_calib_frame:
         self.zero_term=offset
         return offset
     
+class comet_frame:
+    def __init__(self,_obs_code,_tgt,_img,*args, **kwargs):
+        self.img=_img #an instance of an ESO image object, or other observatory configuration
+        mjd_date=Time(float(_img.header["mjd-obs"]),format="mjd")
+        self.date=float(mjd_date.jd)
+        self.name=_tgt
+        self.obs_code=_obs_code #observatory code where imagery was taken
+
+    def find_comet(self):
+        jpl_obj=Horizons(id=self.name,id_type="smallbody",location=self.obs_code,epochs=self.date)
+        comet_eph=jpl_obj.ephemerides()
+        self.tgt_RA=comet_eph["RA"]
+        self.tgt_DEC=comet_eph["DEC"]
+        
+        self.comet_pix_location=self.img.wcs.world_to_pixel(coords.SkyCoord(ra=self.tgt_RA,dec=self.tgt_DEC,unit="deg",frame="fk5"))
+        self.comet_pix_location=np.array(self.comet_pix_location).flatten()
+        print(self.comet_pix_location)
+    
+    def show_comet(self):
+
+        aperture = CircularAperture(self.comet_pix_location, r=10)        
+
+        plt.imshow(self.img.data, cmap='grey', origin='lower', norm=LogNorm())
+        aperture.plot(color='red', lw=1.5, alpha=0.5)
+        plt.xlim(0,824)
+        plt.ylim(0,824)
+        plt.annotate(self.name,self.comet_pix_location,color="w")
+        plt.show()
+
+
