@@ -214,6 +214,8 @@ def batch_plate_solve(dir,file_list,px_scale):
         print("--- FAILED FILES ---")
         for file in failed_files:
             print(file)
+            os.remove(pathlib.Path(dir/file))
+        print("-> Failed Files Deleted from Output Directory <-")
 
 
 def allign_and_avgstack(images,wcs):
