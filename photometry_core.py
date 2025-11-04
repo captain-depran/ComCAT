@@ -402,3 +402,11 @@ class comet_frame:
         plt.show()
 
 
+    def cutout_comet(self):
+        cutout_size=150
+        pad=int(cutout_size/2)
+        center=self.comet_pix_location
+        self.cutout=self.img.data[int(center[0]-pad):int(center[0]+pad),int(center[1]-pad):int(center[1]+pad)]
+        #plt.imshow(self.cutout,origin="lower",cmap="grey",norm=LogNorm())
+        #plt.show()
+        
