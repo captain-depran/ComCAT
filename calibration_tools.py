@@ -18,6 +18,11 @@ from ccdproc import wcs_project
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
+from photutils.aperture import CircularAperture,aperture_photometry,CircularAnnulus,ApertureStats
+from photutils.detection import DAOStarFinder
+from photutils.background import Background2D, MedianBackground
+from astropy.stats import sigma_clipped_stats, SigmaClip,sigma_clip
+
 from astropy.utils.exceptions import AstropyWarning
 warnings.simplefilter('ignore', category=AstropyWarning)
 warnings.simplefilter('ignore', category=UserWarning)
@@ -170,20 +175,19 @@ def plate_solve(img_path,px_scale):
     ast=ANet()
     ast.api_key="irjhrsszlsratohk"
 
-
     plate_wcs=ast.solve_from_image(str(img_path),
                                    verbose=False,
-                                   positional_error=20,
+                                   positional_error=100,
                                    scale_units='arcsecperpix',
-                                   detect_threshold=8,
-                                   fwhm=7,
+                                   detect_threshold=10,
+                                   fwhm=5,
                                    scale_est=px_scale,
                                    scale_type="ev",
                                    scale_err=5,
                                    crpix_center=True,
                                    center_ra=ra_cent,
                                    center_dec=dec_cent,
-                                   radius=5,
+                                   radius=10,
                                    ra_dec_units=("degree","degree"))
     if plate_wcs=={}:
         print("PLATE SOLVING FAILED/TIMEDOUT: "+img_path.name)
@@ -192,14 +196,112 @@ def plate_solve(img_path,px_scale):
 
     return plate_wcs,solved_flag
 
-def batch_plate_solve(dir,file_list,px_scale):
+def source_list_plate_solve(img_path,sources,px_scale):
+    ra_tag="RA"
+    dec_tag="DEC"
+    solved_flag=False
+    with fits.open(img_path) as img:
+        ra_cent=img[0].header[ra_tag]
+        dec_cent=img[0].header[dec_tag]
+        xsize=img[0].header["naxis1"]
+        ysize=img[0].header["naxis2"]
+    
+
+    ast=ANet()
+    ast.api_key="irjhrsszlsratohk"
+
+    plate_wcs=ast.solve_from_source_list(sources["xcentroid"],
+                                   sources["ycentroid"],
+                                   xsize,
+                                   ysize,
+                                   verbose=False,
+                                   parity=2,
+                                   positional_error=10,
+                                   scale_units='arcsecperpix',
+                                   scale_est=px_scale,
+                                   scale_type="ev",
+                                   scale_err=5,
+                                   crpix_center=True,
+                                   center_ra=ra_cent,
+                                   center_dec=dec_cent,
+                                   radius=0.5)
+    if plate_wcs=={}:
+        print("PLATE SOLVING FAILED/TIMEDOUT: "+img_path.name)
+    else:
+        solved_flag=True
+
+    return plate_wcs,solved_flag
+
+
+def sextractor(img_path,fwhm,thresh,mask):
+    """
+    Manual source extraction in an attempt to better plate solve the image
+    """
+    ccd = CCDData.read(img_path, unit='adu')
+    data = ccd.data
+    mean, median, std = sigma_clipped_stats(data, sigma=3.0, maxiters=5)
+    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh * std,min_separation=10)
+    table=daofind.find_stars(data,mask=mask)
+    table=table[np.abs(table["roundness2"])<0.15]
+    
+    #This is here to debug source extraction
+    coords_x=np.array(table["xcentroid"])
+    coords_y=np.array(table["ycentroid"])
+    coords=np.stack((coords_x,coords_y),axis=-1)
+    apertures = CircularAperture(coords, r=8)
+
+    plt.imshow(data,origin="lower",norm=LogNorm())
+    apertures.plot(color='blue', lw=1.5, alpha=0.5)
+    plt.show()
+    
+    table.sort("flux")
+    table.reverse()
+    table['xcentroid'] += 1
+    table['ycentroid'] += 1
+
+
+    return table
+
+
+def create_bkg_sub_copy(dir,file,mask):
+    frame=CCDData.read(str(dir/file),unit="adu")
+    #with fits.open(dir/file) as img:
+        #frame=img[0]
+    data=frame.data
+    #print(frame)
+    print("=========")
+    mean, median, std = sig(data, sigma=3.0)
+
+    data[mask]=median
+    data[data<0]=median
+
+    sigma_clip = SigmaClip(sigma=3.0)
+    bkg_estimator = MedianBackground()
+    bkg = Background2D(data, (20, 20), filter_size=(3, 3),
+                        sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
+    data_bkgsub=data-bkg.background
+    data_bkgsub[data_bkgsub<0]=0
+    frame.data=data_bkgsub
+    path=pathlib.Path(dir/ str("bkg_sub_"+file))
+    frame.write(str(path),overwrite=True)
+
+
+
+def batch_plate_solve(dir,file_list,px_scale,mask,fwhm,thresh):
     print ("PLATE SOLVING ",len(file_list)," IMAGES")
     file_n=len(file_list)
     fails=0
     failed_files=[]
     for file in file_list:
+
+        create_bkg_sub_copy(dir,file,mask)
+
         tgt_path=pathlib.Path(dir/file)
-        plate_wcs,solved=plate_solve(tgt_path,px_scale)
+        ref_tgt_path=pathlib.Path(dir/str("bkg_sub_"+file))
+
+        sources=sextractor(ref_tgt_path,fwhm,thresh,mask)
+        #plate_wcs,solved=_plate_solve(ref_tgt_path,px_scale)
+        plate_wcs,solved=source_list_plate_solve(tgt_path,sources,px_scale)
         if solved==False:
             with fits.open(tgt_path,mode="update") as img:
                 img[0].header.update({"plate_solved" : solved})
@@ -209,12 +311,13 @@ def batch_plate_solve(dir,file_list,px_scale):
             with fits.open(tgt_path,mode="update") as img:
                 img[0].header.update(plate_wcs)
                 img[0].header.update({"plate_solved" : solved})
+        break
     print("PLATE SOLVING COMPLETE! | ",fails," FAILS | ",file_n-fails, " SUCCESSES")
     if len(failed_files)!=0:
         print("--- FAILED FILES ---")
         for file in failed_files:
             print(file)
-            os.remove(pathlib.Path(dir/file))
+            #os.remove(pathlib.Path(dir/file))
         print("-> Failed Files Deleted from Output Directory <-")
 
 

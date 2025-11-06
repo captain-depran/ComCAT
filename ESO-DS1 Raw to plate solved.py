@@ -54,5 +54,8 @@ science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt_name+"_"+fi
 science_files=science.files_filtered(**criteria)
 CT.batch_plate_solve(calib_path,
                   science_files,
-                  px_scale)
+                  px_scale,
+                  bad_pixel_mask,
+                  6,
+                  7)
 
