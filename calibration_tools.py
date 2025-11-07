@@ -216,7 +216,6 @@ def source_list_plate_solve(img_path,sources,px_scale):
                                    ysize,
                                    verbose=False,
                                    parity=2,
-                                   positional_error=10,
                                    scale_units='arcsecperpix',
                                    scale_est=px_scale,
                                    scale_type="ev",
@@ -224,10 +223,11 @@ def source_list_plate_solve(img_path,sources,px_scale):
                                    crpix_center=True,
                                    center_ra=ra_cent,
                                    center_dec=dec_cent,
-                                   radius=0.5)
+                                   radius=1)
     if plate_wcs=={}:
-        print("PLATE SOLVING FAILED/TIMEDOUT: "+img_path.name)
+        print("PLATE SOLVING FAILED/TIMEDOUT: "+img_path.name+" ["+str(len(sources["xcentroid"]))+" Sources]")
     else:
+        print("PLATE SOLVING SUCCESFUL: "+img_path.name+" ["+str(len(sources["xcentroid"]))+" Sources]")
         solved_flag=True
 
     return plate_wcs,solved_flag
@@ -237,25 +237,28 @@ def sextractor(img_path,fwhm,thresh,mask):
     """
     Manual source extraction in an attempt to better plate solve the image
     """
-    ccd = CCDData.read(img_path, unit='adu')
+    ccd = CCDData.read(img_path)
     data = ccd.data
-    mean, median, std = sigma_clipped_stats(data, sigma=3.0, maxiters=5)
-    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh * std,min_separation=10)
+    mean, median, std = sigma_clipped_stats(data, sigma=5.0, maxiters=5)
+    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh * std,min_separation=8)
     table=daofind.find_stars(data,mask=mask)
-    table=table[np.abs(table["roundness2"])<0.15]
+    #table=table[np.abs(table["roundness2"])<0.35]
+
+    table.sort("flux")
+    table.reverse()
+    #table=table[:45]
     
+    """
     #This is here to debug source extraction
     coords_x=np.array(table["xcentroid"])
     coords_y=np.array(table["ycentroid"])
     coords=np.stack((coords_x,coords_y),axis=-1)
     apertures = CircularAperture(coords, r=8)
-
     plt.imshow(data,origin="lower",norm=LogNorm())
     apertures.plot(color='blue', lw=1.5, alpha=0.5)
     plt.show()
+    """
     
-    table.sort("flux")
-    table.reverse()
     table['xcentroid'] += 1
     table['ycentroid'] += 1
 
@@ -264,18 +267,16 @@ def sextractor(img_path,fwhm,thresh,mask):
 
 
 def create_bkg_sub_copy(dir,file,mask):
-    frame=CCDData.read(str(dir/file),unit="adu")
+    frame=CCDData.read(str(dir/file))
     #with fits.open(dir/file) as img:
         #frame=img[0]
     data=frame.data
-    #print(frame)
-    print("=========")
-    mean, median, std = sig(data, sigma=3.0)
+    mean, median, std = sig(data, sigma=5.0)
 
     data[mask]=median
     data[data<0]=median
 
-    sigma_clip = SigmaClip(sigma=3.0)
+    sigma_clip = SigmaClip(sigma=5.0,maxiters=10)
     bkg_estimator = MedianBackground()
     bkg = Background2D(data, (20, 20), filter_size=(3, 3),
                         sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
@@ -311,14 +312,14 @@ def batch_plate_solve(dir,file_list,px_scale,mask,fwhm,thresh):
             with fits.open(tgt_path,mode="update") as img:
                 img[0].header.update(plate_wcs)
                 img[0].header.update({"plate_solved" : solved})
-        break
+        os.remove(ref_tgt_path)
     print("PLATE SOLVING COMPLETE! | ",fails," FAILS | ",file_n-fails, " SUCCESSES")
     if len(failed_files)!=0:
         print("--- FAILED FILES ---")
         for file in failed_files:
             print(file)
             #os.remove(pathlib.Path(dir/file))
-        print("-> Failed Files Deleted from Output Directory <-")
+        #print("-> Failed Files Deleted from Output Directory <-")
 
 
 def allign_and_avgstack(images,wcs):
