@@ -55,7 +55,11 @@ def get_image_file(calib_path,tgt,filter):
     criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
     science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt+"_"+filter+"*")
     science_files=science.files_filtered(**criteria)
-    return science_files[0]
+    if len(science_files)==0:
+        print("ERROR: No Image Found")
+        return 9999
+    else:
+        return science_files[0]
 
 def bound_legal(value,shift,hi_limit,lw_limit):
     """
@@ -103,6 +107,15 @@ def cosmic_ray_reduce(ccd_image,read_noise):
     new_ccd=ccdp.cosmicray_lacosmic(ccd_image,readnoise=read_noise,sigclip=10)
     return new_ccd
 
+
+def check_job_size(comet_names,filter_names,calib_path):
+    file_count=0
+    for comet in comet_names:
+        for filter in filter_names:
+            file_names=get_image_files(calib_path,comet,filter)
+            file_count+=len(file_names)
+    return file_count
+
 class ESO_image:
     def __init__(self,folder,file_name):
         self.file_name=file_name
@@ -114,13 +127,14 @@ class ESO_image:
         self.read_noise=float(self.header["HIERARCH ESO DET OUT1 RON".lower()])
         self.gain=float(self.header["HIERARCH ESO DET OUT1 CONAD".lower()])
         self.exptime = self.header["exptime"]
+        self.solved=True
         try:
             if self.header["plate_solved"]==False:
                 raise Not_plate_solved({"message":"ERROR: IMAGE HAS NOT BEEN PLATE SOLVED","img_name" : str(file_name)})
         except Not_plate_solved as exp:
             detail = exp.args[0]
             print(detail["message"]+" - "+detail["img_name"])
-            exit()
+            self.solved=False
 
 
 class field_catalogue:
@@ -391,9 +405,7 @@ class comet_frame:
         print(self.comet_pix_location)
     
     def show_comet(self):
-
         aperture = CircularAperture(self.comet_pix_location, r=10)        
-
         plt.imshow(self.img.data, cmap='grey', origin='lower', norm=LogNorm())
         aperture.plot(color='red', lw=1.5, alpha=0.5)
         plt.xlim(0,824)
@@ -403,7 +415,7 @@ class comet_frame:
 
 
     def cutout_comet(self):
-        cutout_size=150
+        cutout_size=60
         pad=int(cutout_size/2)
         center=self.comet_pix_location
         self.cutout=self.img.data[int(center[0]-pad):int(center[0]+pad),int(center[1]-pad):int(center[1]+pad)]
