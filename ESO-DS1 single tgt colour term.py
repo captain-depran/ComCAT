@@ -12,7 +12,7 @@ root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
-tgt_name="149P"
+tgt_name="93p"
 
 
 
@@ -60,6 +60,8 @@ for image_name in (all_image_names):
     plot_this=False
     pix_mask.data=pixel_mask_data
     img=photo_core.ESO_image(calib_path,image_name)
+    if img.solved==False:
+        continue
     subject_frame=photo_core.colour_calib_frame(img,
                                                 pix_mask,
                                                 edge_pad,
@@ -73,8 +75,7 @@ for image_name in (all_image_names):
                         ann_in,
                         ann_out,
                         plot=plot_this)
-
-
+    count+=1
     new_R_r,new_gr,id,grad,filtered_R_r,mag_error = subject_frame.colour_grad_fit()
 
 
