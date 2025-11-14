@@ -12,7 +12,7 @@ root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
-tgt_name="93p"
+tgt_name="P113"
 
 
 
@@ -70,12 +70,14 @@ for image_name in (all_image_names):
     subject_frame.star_fitter(star_cell_size,
                               fwhm_range=0.3)
 
-
+    
     subject_frame.ap_phot(app_rad,
                         ann_in,
                         ann_out,
                         plot=plot_this)
     count+=1
+    if subject_frame.no_stars==True:
+        continue
     new_R_r,new_gr,id,grad,filtered_R_r,mag_error = subject_frame.colour_grad_fit()
 
 
@@ -87,29 +89,34 @@ for image_name in (all_image_names):
     mag_errors.extend(mag_error)
 
 print("Ellapsed Time: ",time.process_time()-t)
-#plt.scatter(gr,R_r)
-#plt.show()
-print(np.median(grads))
-term=np.median(grads)
+
+if len(calib_frames)==0:
+    print("NO VALID CALIBRATION FRAMES")
+else:
+        
+    #plt.scatter(gr,R_r)
+    #plt.show()
+    print(np.median(grads))
+    term=np.median(grads)
 
 
-for frame in calib_frames:
-    offset = frame.colour_zero(term)
-    #plt.scatter(frame.target_table["mag"]-offset,frame.frame_catalogue["rmag"])
-    plt.errorbar(frame.target_table["g-r"],frame.target_table["Scaled R-r"],yerr=frame.target_table["mag_error"],fmt=".")
-    #plt.scatter(frame.target_table["g-r"],frame.target_table["R-r"])
-    #plt.plot(gr,(np.array(gr)*term)+offset)
-plt.show()
-    
+    for frame in calib_frames:
+        offset = frame.colour_zero(term)
+        #plt.scatter(frame.target_table["mag"]-offset,frame.frame_catalogue["rmag"])
+        plt.errorbar(frame.target_table["g-r"],frame.target_table["Scaled R-r"],yerr=frame.target_table["mag_error"],fmt=".")
+        #plt.scatter(frame.target_table["g-r"],frame.target_table["R-r"])
+        #plt.plot(gr,(np.array(gr)*term)+offset)
+    plt.show()
+        
 
-"""
-plt.scatter(gr,R_r)
-plt.plot(gr,np.array(gr)*term,color="r")
-plt.xlabel("g - r (Mag)")
-plt.ylabel("R - r (Mag)")
-for x,y,id in zip(gr,R_r,ids):
-    if y>1:
-        plt.annotate(str(id),[x,y])
-plt.show()
+    """
+    plt.scatter(gr,R_r)
+    plt.plot(gr,np.array(gr)*term,color="r")
+    plt.xlabel("g - r (Mag)")
+    plt.ylabel("R - r (Mag)")
+    for x,y,id in zip(gr,R_r,ids):
+        if y>1:
+            plt.annotate(str(id),[x,y])
+    plt.show()
 
-"""
+    """
