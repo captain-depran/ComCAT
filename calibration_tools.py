@@ -4,7 +4,7 @@ from astroquery.astrometry_net import AstrometryNet as ANet
 import pathlib
 import os
 import warnings
-
+import time
 
 import numpy as np
 from astropy.io import fits
@@ -303,6 +303,7 @@ def batch_plate_solve(dir,file_list,px_scale,mask,fwhm,thresh):
         sources=sextractor(ref_tgt_path,fwhm,thresh,mask)
         #plate_wcs,solved=_plate_solve(ref_tgt_path,px_scale)
         plate_wcs,solved=source_list_plate_solve(tgt_path,sources,px_scale)
+        time.sleep(10)
         if solved==False:
             with fits.open(tgt_path,mode="update") as img:
                 img[0].header.update({"plate_solved" : solved})
