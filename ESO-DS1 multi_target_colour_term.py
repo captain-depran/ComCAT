@@ -14,7 +14,7 @@ all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
 pix_mask=CT.load_bad_pixel_mask(calib_path)
 
-tgt_names=["P2004F3","149P","P113","94P","93P","74P"]
+tgt_names=["P2004F3","149P","94P","93P","74P","2009AU16","P2005R2","P29"]
 
 filter="R#642"
 cat_filter="rmag"
