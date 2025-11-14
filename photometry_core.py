@@ -232,6 +232,7 @@ class colour_calib_frame:
         self.estimate_bkg()
         self.colour_median=colour_median
         self.invalid_ids=[]
+        self.no_stars=False
 
     def estimate_bkg(self):
         data=self.frame.data
@@ -354,18 +355,29 @@ class colour_calib_frame:
 
         self.target_table["app_sum"] = phot_table["aperture_sum"] - total_bkg
 
+        
+
         self.target_table["SNR"] = self.ap_error(self.target_table["app_sum"],total_bkg,aperture_area)
 
+        
 
         self.invalid_ids.extend(self.target_table[self.target_table["app_sum"] <= 0]["id"].value) #Mark any observation with a negative aperture sum as invalid
+
+        
 
         self.invalid_ids=np.unique(self.invalid_ids) #Remove any duplicate invalid IDs
 
         self.target_table=self.target_table[np.isin(self.target_table["id"],self.invalid_ids,invert=True)] #Filter the invalids IDs from the observation list
+
+
         self.frame_catalogue=self.frame_catalogue[np.isin(self.frame_catalogue["ID"],self.invalid_ids,invert=True)] #Filter the invalid IDs from the comparison catalogue
 
+        if len(self.target_table)==0:
+            self.no_stars=True
         self.target_table["mag"] = -2.5*np.log10(self.target_table["app_sum"]/self.frame.exptime) #Calculate the magnitude from the aperture counts        
         self.target_table["mag_error"] = (2.5/np.log(10)) * (1/self.target_table["SNR"])
+
+        
 
     def colour_grad_fit(self):
 
