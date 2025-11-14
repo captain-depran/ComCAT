@@ -293,6 +293,7 @@ def batch_plate_solve(dir,file_list,px_scale,mask,fwhm,thresh):
     file_n=len(file_list)
     fails=0
     failed_files=[]
+    print("ETC: ",(len(file_list)*10)," SECONDS")
     for file in file_list:
 
         create_bkg_sub_copy(dir,file,mask)
