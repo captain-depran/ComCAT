@@ -5,6 +5,7 @@ from matplotlib.colors import LogNorm
 import numpy as np
 from tqdm import tqdm
 import pathlib
+import time
 
 from ccdproc import ImageFileCollection
 import ccdproc as ccdp
