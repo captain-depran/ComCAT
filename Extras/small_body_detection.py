@@ -14,7 +14,7 @@ import numpy as np
 root_dir = pathlib.Path(__file__).resolve().parent
 
 px_scale=0.24
-tgt_name="P29"
+tgt_name="149P"
 filter="R#642"
 
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
