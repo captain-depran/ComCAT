@@ -210,22 +210,38 @@ def source_list_plate_solve(img_path,sources,px_scale):
     ast=ANet()
     ast.api_key="irjhrsszlsratohk"
 
-    plate_wcs=ast.solve_from_source_list(sources["xcentroid"],
-                                   sources["ycentroid"],
-                                   xsize,
-                                   ysize,
-                                   verbose=False,
-                                   parity=2,
-                                   scale_units='arcsecperpix',
-                                   scale_est=px_scale,
-                                   scale_type="ev",
-                                   scale_err=5,
-                                   crpix_center=True,
-                                   center_ra=ra_cent,
-                                   center_dec=dec_cent,
-                                   radius=1)
+    try_again=True
+    submission_id=None
+
+    while try_again:
+        try:
+            if not submission_id:
+                plate_wcs=ast.solve_from_source_list(sources["xcentroid"],
+                                            sources["ycentroid"],
+                                            xsize,
+                                            ysize,
+                                            verbose=False,
+                                            parity=2,
+                                            scale_units='arcsecperpix',
+                                            scale_est=px_scale,
+                                            scale_type="ev",
+                                            scale_err=5,
+                                            crpix_center=True,
+                                            center_ra=ra_cent,
+                                            center_dec=dec_cent,
+                                            radius=1,
+                                            submission_id=submission_id)
+            else:
+                print("Monitoring Solve...")
+                plate_wcs = ast.monitor_submission(submission_id, solve_timeout=30)
+            time.sleep(10)
+        except TimeoutError as e:
+            submission_id = e.args[1]
+        else:
+            try_again=False
+
     if plate_wcs=={}:
-        print("PLATE SOLVING FAILED/TIMEDOUT: "+img_path.name+" ["+str(len(sources["xcentroid"]))+" Sources]")
+        print("PLATE SOLVING FAILED: "+img_path.name+" ["+str(len(sources["xcentroid"]))+" Sources]")
     else:
         print("PLATE SOLVING SUCCESFUL: "+img_path.name+" ["+str(len(sources["xcentroid"]))+" Sources]")
         solved_flag=True
@@ -293,7 +309,8 @@ def batch_plate_solve(dir,file_list,px_scale,mask,fwhm,thresh):
     file_n=len(file_list)
     fails=0
     failed_files=[]
-    print("ETC: ",(len(file_list)*10)," SECONDS")
+    print("-"*10)
+    #print("ETC: ",(len(file_list)*10)," SECONDS")
     for file in file_list:
 
         create_bkg_sub_copy(dir,file,mask)
@@ -304,7 +321,6 @@ def batch_plate_solve(dir,file_list,px_scale,mask,fwhm,thresh):
         sources=sextractor(ref_tgt_path,fwhm,thresh,mask)
         #plate_wcs,solved=_plate_solve(ref_tgt_path,px_scale)
         plate_wcs,solved=source_list_plate_solve(tgt_path,sources,px_scale)
-        time.sleep(10)
         if solved==False:
             with fits.open(tgt_path,mode="update") as img:
                 img[0].header.update({"plate_solved" : solved})
