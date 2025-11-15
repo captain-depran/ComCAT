@@ -412,14 +412,13 @@ class comet_frame:
         comet_eph=jpl_obj.ephemerides()
         self.tgt_RA=comet_eph["RA"]
         self.tgt_DEC=comet_eph["DEC"]
-        
         self.comet_pix_location=self.img.wcs.world_to_pixel(coords.SkyCoord(ra=self.tgt_RA,dec=self.tgt_DEC,unit="deg",frame="fk5"))
         self.comet_pix_location=np.array(self.comet_pix_location).flatten()
         print(self.comet_pix_location)
     
     def show_comet(self):
         aperture = CircularAperture(self.comet_pix_location, r=10)        
-        plt.imshow(self.img.data, cmap='grey', origin='lower', norm=LogNorm())
+        plt.imshow(self.img.data, cmap='grey', origin='lower')
         aperture.plot(color='red', lw=1.5, alpha=0.5)
         plt.xlim(0,824)
         plt.ylim(0,824)
@@ -428,10 +427,14 @@ class comet_frame:
 
 
     def cutout_comet(self):
-        cutout_size=60
+        cutout_size=100
         pad=int(cutout_size/2)
         center=self.comet_pix_location
-        self.cutout=self.img.data[int(center[0]-pad):int(center[0]+pad),int(center[1]-pad):int(center[1]+pad)]
+        x_low=int(center[0]-pad)
+        x_high=int(center[0]+pad)
+        y_low=int(center[1]-pad)
+        y_high=int(center[1]+pad)
+        self.cutout=self.img.data[y_low:y_high,x_low:x_high]
         #plt.imshow(self.cutout,origin="lower",cmap="grey",norm=LogNorm())
         #plt.show()
         
