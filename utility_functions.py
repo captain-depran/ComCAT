@@ -15,7 +15,8 @@ def report_names(all_fits_path):
     lights=ImageFileCollection(all_fits_path,keywords='*',glob_exclude="bias_sub_*")
     lights.sort(["object","mjd-obs"])
     all_objects=np.array(lights.summary["object"])
-    print(np.unique(all_objects))
+    names=np.unique(all_objects)
+    return names
 
 def clean_unsolved(calib_path):
     lights=ImageFileCollection(calib_path,keywords='*')
@@ -31,5 +32,5 @@ def clean_unsolved(calib_path):
         os.remove(calib_path/name)
 
 
-#report_names(all_fits_path)
-clean_unsolved(calib_path)
+#names=report_names(all_fits_path)
+#clean_unsolved(calib_path)
