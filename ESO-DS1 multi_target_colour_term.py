@@ -16,8 +16,8 @@ pix_mask=CT.load_bad_pixel_mask(calib_path)
 
 tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","P29","50P","P113"]
 
-filter="R#642"
-cat_filter="rmag"
+filter="V#641"
+cat_filter="gmag"
 pix_size=0.24  #size of a pixel in arcseconds
 star_cell_size=5 #half width of the cell used for star detection around a PS1 entry
 
@@ -72,7 +72,8 @@ for tgt_name in tgt_names:
         subject_frame=photo_core.colour_calib_frame(img,
                                                     pix_mask,
                                                     edge_pad,
-                                                    wide_cat)
+                                                    wide_cat,
+                                                    cat_filter)
         
         subject_frame.star_fitter(star_cell_size,
                                 fwhm_range=0.3)

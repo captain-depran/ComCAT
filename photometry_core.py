@@ -224,8 +224,9 @@ class colour_calib_frame:
     """
     A class for a single frame used for calibrating the colour term. Your create one per frame used during the calibration process
     """
-    def __init__(self,img,mask,edge_pad,field_catalogue,colour_median=0,*args, **kwargs):
+    def __init__(self,img,mask,edge_pad,field_catalogue,cat_filter,colour_median=0,*args, **kwargs):
         self.mask=mask
+        self.cat_filter=cat_filter
         self.cat_pix,self.cat_ids,self.frame_catalogue=field_catalogue.field_section(img,edge_pad)
         self.frame=img  #An instance of the ESO_image object, or different observatory configured image
         self.field_span=len(self.frame.data[:,0])
@@ -381,7 +382,7 @@ class colour_calib_frame:
 
     def colour_grad_fit(self):
 
-        self.target_table["R-r"] = self.target_table["mag"] - self.frame_catalogue["rmag"]
+        self.target_table["R-r"] = self.target_table["mag"] - self.frame_catalogue[self.cat_filter]
         self.target_table["g-r"] = self.frame_catalogue["gmag"] - self.frame_catalogue["rmag"]
         self.target_table["Scaled R-r"]=self.target_table["R-r"]-np.median(self.target_table["R-r"])
 
