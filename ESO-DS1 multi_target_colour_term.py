@@ -14,7 +14,7 @@ all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
 pix_mask=CT.load_bad_pixel_mask(calib_path)
 
-tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","P29","50P","P113","149P"]
+tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","P29","50P","P113"]
 
 filter="R#642"
 cat_filter="rmag"
@@ -83,14 +83,17 @@ for tgt_name in tgt_names:
                             ann_out,
                             plot=plot_this)
 
-
+        if subject_frame.no_stars==True:
+            continue
         new_R_r,new_gr,id,grad,filtered_R_r,mag_errors = subject_frame.colour_grad_fit()
+
         #print("Filtered Points: ",np.sum(filtered_R_r.mask))
         #R_r.extend(new_R_r)
         #gr.extend(new_gr)
         #ids.extend(id)
         grads.append(grad)
         calib_frames.append(subject_frame)
+    
 
 
 
