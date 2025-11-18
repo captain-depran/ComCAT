@@ -408,6 +408,10 @@ class comet_frame:
         self.name=_tgt
         self.obs_code=_obs_code #observatory code where imagery was taken
 
+    def find_jpl_eph_code(self):
+        jpl_obj=Horizons(id=self.name,id_type="smallbody",location=self.obs_code,epochs=self.date)
+        print(jpl_obj)
+
     def find_comet(self):
         jpl_obj=Horizons(id=self.name,id_type="smallbody",location=self.obs_code,epochs=self.date)
         comet_eph=jpl_obj.ephemerides()
@@ -415,11 +419,11 @@ class comet_frame:
         self.tgt_DEC=comet_eph["DEC"]
         self.comet_pix_location=self.img.wcs.world_to_pixel(coords.SkyCoord(ra=self.tgt_RA,dec=self.tgt_DEC,unit="deg",frame="fk5"))
         self.comet_pix_location=np.array(self.comet_pix_location).flatten()
-        print(self.comet_pix_location)
+        #print(self.comet_pix_location)
     
     def show_comet(self):
         aperture = CircularAperture(self.comet_pix_location, r=10)        
-        plt.imshow(self.img.data, cmap='grey', origin='lower')
+        plt.imshow(self.img.data, cmap='grey', origin='lower',norm=LogNorm())
         aperture.plot(color='red', lw=1.5, alpha=0.5)
         plt.xlim(0,824)
         plt.ylim(0,824)
@@ -429,13 +433,43 @@ class comet_frame:
 
     def cutout_comet(self):
         cutout_size=100
-        pad=int(cutout_size/2)
+        self.pad=int(cutout_size/2)
         center=self.comet_pix_location
-        x_low=int(center[0]-pad)
-        x_high=int(center[0]+pad)
-        y_low=int(center[1]-pad)
-        y_high=int(center[1]+pad)
-        self.cutout=self.img.data[y_low:y_high,x_low:x_high]
-        #plt.imshow(self.cutout,origin="lower",cmap="grey",norm=LogNorm())
-        #plt.show()
-        
+        x_low=int(center[0]-self.pad)
+        x_high=int(center[0]+self.pad)
+        y_low=int(center[1]-self.pad)
+        y_high=int(center[1]+self.pad)
+        self.cutout=self.img.data[y_low:y_high+1,x_low:x_high+1]
+
+    def apply_correction(self):
+        self.jpl_location=self.comet_pix_location
+        self.comet_pix_location=self.comet_pix_location+self.offset
+        #print("BEFORE: ",self.jpl_location," | AFTER: ",self.comet_pix_location)
+
+    def refine_lock(self):
+        self.offset=lock_comet(self.cutout)
+        self.apply_correction()
+        self.cutout_comet()
+
+def composite_comet(frames):
+    if (isinstance(frames[0],np.ndarray)):
+        sum=np.sum(frames,axis=0)
+        avg=np.median(frames,axis=0)
+        return avg
+    else:
+        print("ERROR, IMAGES ARE NOT NUMPY ARRAYS")
+        return 0
+    
+def lock_comet(img):
+    result=fit_gauss(img,fwhm=6).results
+    center=(len(img[0])-1)/2
+    jpl_offset=np.array([result["x_fit"][0],result["y_fit"][0]])
+    jpl_offset=jpl_offset-center
+    return jpl_offset
+
+def mark_target(pos,image_data):
+    aperture = CircularAperture(pos, r=len(image_data[0])/50)
+    plt.imshow(image_data,origin="lower",cmap="grey")
+    aperture.plot(color="red",lw=1.5,alpha=0.5)
+    plt.axis("scaled")
+    plt.show()
