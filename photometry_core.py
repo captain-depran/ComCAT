@@ -408,12 +408,11 @@ class comet_frame:
         self.name=_tgt
         self.obs_code=_obs_code #observatory code where imagery was taken
 
-    def find_jpl_eph_code(self):
-        jpl_obj=Horizons(id=self.name,id_type="smallbody",location=self.obs_code,epochs=self.date)
-        print(jpl_obj)
-
-    def find_comet(self):
-        jpl_obj=Horizons(id=self.name,id_type="smallbody",location=self.obs_code,epochs=self.date)
+    def find_comet(self,eph_code=0,*arg,**kwargs):
+        if eph_code!=0:
+            jpl_obj=Horizons(id=eph_code,id_type="smallbody",location=self.obs_code,epochs=self.date)
+        else:
+            jpl_obj=Horizons(id=self.name,id_type="smallbody",location=self.obs_code,epochs=self.date)
         comet_eph=jpl_obj.ephemerides()
         self.tgt_RA=comet_eph["RA"]
         self.tgt_DEC=comet_eph["DEC"]
@@ -450,6 +449,9 @@ class comet_frame:
         self.offset=lock_comet(self.cutout)
         self.apply_correction()
         self.cutout_comet()
+    
+    def comet_ap_phot(self):
+        exit()
 
 def composite_comet(frames):
     if (isinstance(frames[0],np.ndarray)):
