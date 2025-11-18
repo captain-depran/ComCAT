@@ -12,8 +12,8 @@ root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
-tgt_name="149P"
-search_name="149P"
+tgt_name="P113"
+search_name="113P"
 filter="R#642"
 
 obs_code=809
@@ -49,6 +49,7 @@ comet_error = photo_core.lock_comet(cutout_stack)
 #photo_core.mark_target(comet_error+((len(cutout_stack[0])-1)/2),cutout_stack)
 
 all_frames=[]
+mags=[]
 for pic in comet_pics:
     pic.offset=comet_error
     pic.apply_correction()
@@ -57,6 +58,9 @@ for pic in comet_pics:
     pic.refine_lock() #Refine the lock on the comet by refitting a gaussian per image now we know we are *basically* on top of the comet
 
     all_frames.append(pic.cutout)
+
+    mags.append(pic.comet_ap_phot(5,1.2,1.5))
+
     #pic.show_comet()
     #photo_core.mark_target([pic.pad,pic.pad],pic.cutout)
 pic.show_comet()
@@ -66,3 +70,5 @@ comet_error = photo_core.lock_comet(cutout_stack)
 photo_core.mark_target(comet_error+((len(cutout_stack[0])-1)/2),cutout_stack)
 
 
+plt.plot(mags)
+plt.show()

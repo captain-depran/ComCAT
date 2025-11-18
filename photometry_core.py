@@ -272,8 +272,6 @@ class colour_calib_frame:
             plt.hist(fwhm,bins=20)
             plt.show()
         
-
-
         self.avg_fwhm=np.median(fwhm)
         self.invalid_ids.extend(self.target_table[np.abs(self.target_table["fwhm"].value-self.avg_fwhm) > fwhm_range ]["id"].value)
         
@@ -450,8 +448,39 @@ class comet_frame:
         self.apply_correction()
         self.cutout_comet()
     
-    def comet_ap_phot(self):
-        exit()
+    def comet_ap_phot(self,app_rad,ann_in,ann_out):
+
+        position=self.comet_pix_location
+        aperture = CircularAperture(position, r=app_rad)
+        bkg_annulus = CircularAnnulus(position, r_in = app_rad * ann_in, r_out = app_rad * ann_out)
+
+        phot_table = aperture_photometry(self.img.data,aperture)
+        bkg_app_stats = ApertureStats(self.img.data,bkg_annulus)
+
+        bkg_mean  = bkg_app_stats.mean
+        aperture_area = aperture.area_overlap(self.img.data)
+
+        total_bkg=bkg_mean*aperture_area
+        comet_sum = phot_table["aperture_sum"].value[0]
+        comet_counts = comet_sum - total_bkg
+        comet_mag = -2.5*np.log10(comet_counts/self.img.exptime)
+        print(comet_counts)
+        print(total_bkg)
+        print(comet_mag)
+        print("-"*10)     
+
+
+        """
+        plt.imshow(self.img.data, cmap='grey', origin='lower',norm=LogNorm())
+        aperture.plot(color='red', lw=1.5, alpha=0.5)
+        bkg_annulus.plot(color='red', lw=1.5, alpha=0.5)
+        plt.xlim(0,824)
+        plt.ylim(0,824)
+        plt.annotate(self.name,self.comet_pix_location,color="w")
+        plt.show()   
+        """
+        return comet_mag
+
 
 def composite_comet(frames):
     if (isinstance(frames[0],np.ndarray)):
