@@ -234,6 +234,7 @@ def source_list_plate_solve(img_path,sources,px_scale):
             else:
                 print("Monitoring Solve...")
                 plate_wcs = ast.monitor_submission(submission_id, solve_timeout=30)
+            print("Waiting")
             time.sleep(10)
         except TimeoutError as e:
             submission_id = e.args[1]

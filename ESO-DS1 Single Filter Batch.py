@@ -1,7 +1,7 @@
 import pipeline_commands as ComCAT
 import pathlib
 
-filter="B#639"
+filter="i#705"
 
 root_dir = pathlib.Path(__file__).resolve().parent
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
