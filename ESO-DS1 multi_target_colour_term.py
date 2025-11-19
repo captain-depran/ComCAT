@@ -16,8 +16,8 @@ pix_mask=CT.load_bad_pixel_mask(calib_path)
 
 tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","P29","50P","P113"]
 
-filter="V#641"
-cat_filter="gmag"
+filter="R#642"
+cat_filter="rmag"
 pix_size=0.24  #size of a pixel in arcseconds
 star_cell_size=5 #half width of the cell used for star detection around a PS1 entry
 
