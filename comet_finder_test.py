@@ -12,8 +12,8 @@ root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
-tgt_name="P113"
-search_name="113P"
+tgt_name="149P"
+search_name="149P"
 filter="R#642"
 
 obs_code=809
