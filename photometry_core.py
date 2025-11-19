@@ -394,7 +394,8 @@ class colour_calib_frame:
         return self.target_table["Scaled R-r"].value, self.target_table["g-r"].value, self.target_table["id"].value, self.colour_grad,filtered_data,self.target_table["mag_error"]
 
     def colour_zero(self,gradient):
-        offset = np.mean(self.target_table["R-r"].value - gradient * self.target_table["g-r"].value)
+        offset = np.mean(gradient * self.target_table["g-r"].value - self.target_table["R-r"].value)
+        #offset = np.median(gradient * self.target_table["g-r"].value)
         self.zero_term=offset
         return offset
     
