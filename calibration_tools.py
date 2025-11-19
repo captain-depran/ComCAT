@@ -27,11 +27,23 @@ from astropy.utils.exceptions import AstropyWarning
 warnings.simplefilter('ignore', category=AstropyWarning)
 warnings.simplefilter('ignore', category=UserWarning)
 
+from astroquery.astrometry_net import conf
+conf.api_key = 'irjhrsszlsratohk'
 
 root_dir = pathlib.Path(__file__).resolve().parent
 
 def inv_median(a):
     return 1/np.median(a)
+
+def scale_min_max(a):
+    min=np.nanmin(a)
+    max=np.nanmax(a)
+    
+    scaled = (a-min)/(max-min)
+
+    print (np.nanmin(scaled))
+    print (np.nanmax(scaled))
+    return scaled
 
 def set_trim(image_path,extra_clip,prescan_x_tag,prescan_y_tag,overscan_x_tag,overscan_y_tag):
     with fits.open(image_path) as img:
@@ -375,6 +387,9 @@ def make_fringe_map(calib_path,filter):
     #mean, median, std = sig(fringe_map.data, sigma=3.0)
 
     #fringe_map.data=fringe_map.data-mean
+
+    #fringe_map.data=scale_min_max(fringe_map.data)
+
 
     out_path=pathlib.Path(calib_path/("FRINGE_MAP_"+filter+".fits"))
 
