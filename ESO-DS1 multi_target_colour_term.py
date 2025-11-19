@@ -99,14 +99,16 @@ for tgt_name in tgt_names:
 
 
 term=np.mean(grads)
-print(grads)
+#print(grads)
 print (term)
 
 for frame in calib_frames:
     offset = frame.colour_zero(term)
-    plt.errorbar(frame.target_table["g-r"],frame.target_table["R-r"]-offset,yerr=frame.target_table["mag_error"],fmt="k.")
+    plt.errorbar(frame.target_table["g-r"],frame.target_table["R-r"]+offset,yerr=frame.target_table["mag_error"],fmt="k.")
+    plt.plot(np.sort(frame.target_table["g-r"]),(term*np.sort(frame.target_table["g-r"])),label=frame.frame.header["object"])
     #plt.errorbar(frame.frame_catalogue["rmag"],frame.target_table["mag"]-offset,yerr=frame.target_table["mag_error"],fmt="k.")
 #plt.plot(calib_frames[0].frame_catalogue["rmag"],(term*calib_frames[0].frame_catalogue["rmag"])-offset)
+plt.legend()
 plt.show()
 
 

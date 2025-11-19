@@ -232,7 +232,7 @@ def source_list_plate_solve(img_path,sources,px_scale):
                                             sources["ycentroid"],
                                             xsize,
                                             ysize,
-                                            verbose=True,
+                                            verbose=False,
                                             parity=2,
                                             scale_units='arcsecperpix',
                                             scale_est=px_scale,
@@ -248,7 +248,7 @@ def source_list_plate_solve(img_path,sources,px_scale):
                 print("Monitoring Solve...")
                 plate_wcs = ast.monitor_submission(submission_id, solve_timeout=30)
             
-            time.sleep(10)
+            #time.sleep(10)
         except TimeoutError as e:
             submission_id = e.args[1]
         else:
