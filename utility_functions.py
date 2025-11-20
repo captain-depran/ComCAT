@@ -8,8 +8,8 @@ import os
 import numpy as np
 
 root_dir = pathlib.Path(__file__).resolve().parent
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS"/"PROCESSED FRAMES")
 
 def report_names(all_fits_path):
     lights=ImageFileCollection(all_fits_path,keywords='*',glob_exclude="bias_sub_*")
@@ -33,4 +33,5 @@ def clean_unsolved(calib_path):
 
 
 #names=report_names(all_fits_path)
+#print(names)
 #clean_unsolved(calib_path)

@@ -4,8 +4,8 @@ import pathlib
 filter="R#642"
 
 root_dir = pathlib.Path(__file__).resolve().parent
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"ALL_FITS"/"PROCESSED FRAMES")
 
 ref_image = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"BIAS"/"FREE"/"EFOSC.2009-01-27T21_00_47.752.fits")
 

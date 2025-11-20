@@ -49,12 +49,17 @@ class process_filter:
                                     all_fits_path,
                                     calib_path)
 
-        #bad_pixel_mask=CT.generate_bad_pixel_mask(all_fits_path,calib_path)
-        self.bad_pixel_mask=CT.load_bad_pixel_mask(calib_path)
+        self.bad_pixel_mask=CT.generate_bad_pixel_mask(all_fits_path,calib_path)
+        #self.bad_pixel_mask=CT.load_bad_pixel_mask(calib_path)
 
         filter_tgts=[]
         print("--- COMETS IN FILTER BAND ---")
         for tgt in tgt_names:
+            if len(tgt)>10:
+                continue
+            elif "STD" in tgt:
+                continue
+                
             lights=ImageFileCollection(input_path,keywords='*',glob_exclude="bias_sub_*")
             criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
             file_names=lights.files_filtered(**criteria)
