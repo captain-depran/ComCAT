@@ -126,6 +126,15 @@ def generate_bad_pixel_mask(all_fits_path,out_path):
     mask_as_ccd = CCDData(data=mask.astype('uint8'), unit=u.dimensionless_unscaled)
     mask_as_ccd.header['imagetyp'] = 'flat mask'
 
+    col_sum=np.sum(mask_as_ccd.data,axis=0)
+
+    for col in range (0,len(col_sum)):
+        if col_sum[col] > 100:
+            mask_as_ccd.data[:,col]=1
+
+    mask=mask_as_ccd.data
+    #show_image(mask_as_ccd)
+
     out_path=pathlib.Path(out_path/("bad_pixel_map.fits"))
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -375,17 +384,18 @@ def avgstack(images):
     stack = c.median_combine()
     return stack
 
-def make_fringe_map(calib_path,filter):
+def make_fringe_map(calib_path,filter,mask):
     criteria={"ESO INS FILT1 NAME".lower():filter}
     fringe_comp=ImageFileCollection(calib_path,keywords='*',glob_include="fringe_comp*").filter(**criteria)
     comp_files=fringe_comp.files
 
 
     fringe_map=avgstack(fringe_comp)
-
+    fringe_map.mask=mask
+    #fringe_map.data[mask==1]=np.nan
     #mean, median, std = sig(fringe_map.data, sigma=3.0)
 
-    fringe_map.data=fringe_map.data-(np.nanmin(fringe_map.data))
+    #fringe_map.data=fringe_map.data-(np.nanmin(fringe_map.data))
 
     #fringe_map.data=scale_min_max(fringe_map.data)
 
