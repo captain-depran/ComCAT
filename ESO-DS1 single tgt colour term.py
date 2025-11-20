@@ -12,7 +12,7 @@ root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
-tgt_name="P113"
+tgt_name="149P"
 
 
 
@@ -57,7 +57,7 @@ t=time.process_time()
 count=0
 for image_name in (all_image_names):
 
-    plot_this=False
+    plot_this=True
     pix_mask.data=pixel_mask_data
     img=photo_core.ESO_image(calib_path,image_name)
     if img.solved==False:
@@ -65,7 +65,8 @@ for image_name in (all_image_names):
     subject_frame=photo_core.colour_calib_frame(img,
                                                 pix_mask,
                                                 edge_pad,
-                                                wide_cat)
+                                                wide_cat,
+                                                cat_filter)
     
     subject_frame.star_fitter(star_cell_size,
                               fwhm_range=0.3)
