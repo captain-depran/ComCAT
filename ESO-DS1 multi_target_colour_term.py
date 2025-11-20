@@ -9,8 +9,8 @@ import time
 
 
 root_dir = pathlib.Path(__file__).resolve().parent
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"ALL_FITS")
 
 pix_mask=CT.load_bad_pixel_mask(calib_path)
 
@@ -22,7 +22,7 @@ cat_filter="rmag"
 colour_a="gmag"
 colour_b="rmag"
 
-plot=False
+plot=True
 
 pix_size=0.24  #size of a pixel in arcseconds
 star_cell_size=5 #half width of the cell used for star detection around a PS1 entry

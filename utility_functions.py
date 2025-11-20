@@ -31,7 +31,6 @@ def clean_unsolved(calib_path):
     for name in file_names:
         os.remove(calib_path/name)
 
-
 #names=report_names(all_fits_path)
 #print(names)
 #clean_unsolved(calib_path)
