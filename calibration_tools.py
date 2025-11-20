@@ -111,7 +111,6 @@ def load_bad_pixel_mask(dir):
         print("NO BAD PIXEL MASK FOUND")
 
 def generate_bad_pixel_mask(all_fits_path,out_path):
-
     print("GENERATING BAD PIXEL MASK")
     flats=ImageFileCollection(all_fits_path,keywords='*',glob_include="*bias_sub*")
     flats.sort("exptime")
@@ -386,7 +385,7 @@ def make_fringe_map(calib_path,filter):
 
     #mean, median, std = sig(fringe_map.data, sigma=3.0)
 
-    #fringe_map.data=fringe_map.data-mean
+    fringe_map.data=fringe_map.data-(np.nanmin(fringe_map.data))
 
     #fringe_map.data=scale_min_max(fringe_map.data)
 
