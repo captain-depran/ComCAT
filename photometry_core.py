@@ -136,6 +136,17 @@ class ESO_image:
             detail = exp.args[0]
             print(detail["message"]+" - "+detail["img_name"])
             self.solved=False
+        
+    def get_zero(self):
+        with fits.open(self.image_path,mode="update") as img:
+            self.zero=img[0].header["zero_point"]
+        return self.zero
+
+    def update_zero(self,zero_point):
+        print(self.image_path)
+        with fits.open(self.image_path,mode="update") as img:
+                img[0].header.update({"zero_point" : zero_point})
+        
 
 
 class field_catalogue:
@@ -398,6 +409,9 @@ class colour_calib_frame:
         offset = offset - np.median(self.target_table["cat_colour"]*gradient)
         #offset = np.median(gradient * self.target_table["cat_colour"].value)
         self.zero_term=offset
+
+        self.frame.update_zero(offset)
+
         return offset
     
 class comet_frame:
@@ -430,14 +444,14 @@ class comet_frame:
         plt.show()
 
 
-    def cutout_comet(self):
-        cutout_size=100
+    def cutout_comet(self,cutout_size=100,manual_shift=0,*args,**kwargs):
+
         self.pad=int(cutout_size/2)
         center=self.comet_pix_location
-        x_low=int(center[0]-self.pad)
-        x_high=int(center[0]+self.pad)
-        y_low=int(center[1]-self.pad)
-        y_high=int(center[1]+self.pad)
+        x_low=int(center[0]-self.pad)+manual_shift
+        x_high=int(center[0]+self.pad)+manual_shift
+        y_low=int(center[1]-self.pad)+manual_shift
+        y_high=int(center[1]+self.pad)+manual_shift
         self.cutout=self.img.data[y_low:y_high+1,x_low:x_high+1]
 
     def apply_correction(self):
@@ -446,6 +460,7 @@ class comet_frame:
         #print("BEFORE: ",self.jpl_location," | AFTER: ",self.comet_pix_location)
 
     def refine_lock(self):
+
         self.offset=lock_comet(self.cutout)
         self.apply_correction()
         self.cutout_comet()
@@ -493,8 +508,10 @@ def composite_comet(frames):
         print("ERROR, IMAGES ARE NOT NUMPY ARRAYS")
         return 0
     
-def lock_comet(img):
-    result=fit_gauss(img,fwhm=6).results
+def lock_comet(og_img,fwhm=6,*args,**kwargs):
+    img=np.copy(og_img)
+    img[img > 2000] = 0 
+    result=fit_gauss(img,fwhm=fwhm).results
     center=(len(img[0])-1)/2
     jpl_offset=np.array([result["x_fit"][0],result["y_fit"][0]])
     jpl_offset=jpl_offset-center
