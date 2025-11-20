@@ -14,7 +14,7 @@ all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
 pix_mask=CT.load_bad_pixel_mask(calib_path)
 
-tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","P29","50P","P113","149P"]
+tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","P29","50P","P113"]
 
 filter="R#642"
 cat_filter="rmag"
@@ -42,6 +42,7 @@ calib_frames=[]
 grads=[]
 
 for tgt_name in tgt_names:
+    print("-"*10)
     print("PROCESSING COMET: ",tgt_name)
     #reference img, for WCS
     ref_name=photo_core.get_image_file(calib_path,tgt_name,filter)
@@ -59,21 +60,20 @@ for tgt_name in tgt_names:
 
     all_image_names=photo_core.get_image_files(calib_path,tgt_name,filter)
 
-    R_r=[]
-    gr=[]
-    ids=[]
-    #calib_frames=[]
-
     mask=pix_mask
     pixel_mask_data=np.array(pix_mask.data)
 
     first=True
     count=0
-    for image_name in tqdm(all_image_names):
+    for image_name in all_image_names:
         plot_this=False
         pix_mask.data=pixel_mask_data
         img=photo_core.ESO_image(calib_path,image_name)
+        img.update_zero(0)
+        print(image_name)
         if img.solved==False:
+            print("NOT SOLVED, SKIPPING")
+            print("-"*10)
             continue
         subject_frame=photo_core.colour_calib_frame(img,
                                                     pix_mask,
@@ -91,31 +91,33 @@ for tgt_name in tgt_names:
                             plot=plot_this)
 
         if subject_frame.no_stars==True:
+            print("NO VALID STARS, SKIPPING")
+            print("-"*10)
             continue
         new_R_r,new_gr,id,grad,filtered_R_r,mag_errors = subject_frame.colour_grad_fit(colour_a,colour_b)
+        print("CALIBRATION STARS EXTRACTED!")
+        print("-"*10)
 
-        #print("Filtered Points: ",np.sum(filtered_R_r.mask))
-        #R_r.extend(new_R_r)
-        #gr.extend(new_gr)
-        #ids.extend(id)
+
         grads.append(grad)
         calib_frames.append(subject_frame)
     
 
-
+print(len(calib_frames))
 
 term=np.mean(grads)
 #print(grads)
 print (colour_a + " - " + colour_b + " Colour Term: ",term)
 
-if plot:
-    for frame in calib_frames:
-        offset = frame.colour_zero(term)
+
+for frame in calib_frames:
+    offset = frame.colour_zero(term)
+    if plot:
         plt.errorbar(frame.target_table["cat_colour"],frame.target_table["colour_dif"]+offset,yerr=frame.target_table["mag_error"],fmt="k.")
 
-        #plt.plot(np.sort(frame.target_table["cat_colour"]),(term*np.sort(frame.target_table["cat_colour"])),label=frame.frame.header["object"])
-        #plt.errorbar(frame.frame_catalogue["rmag"],frame.target_table["mag"]-offset,yerr=frame.target_table["mag_error"],fmt="k.")
-
+    #plt.plot(np.sort(frame.target_table["cat_colour"]),(term*np.sort(frame.target_table["cat_colour"])),label=frame.frame.header["object"])
+    #plt.errorbar(frame.frame_catalogue["rmag"],frame.target_table["mag"]-offset,yerr=frame.target_table["mag_error"],fmt="k.")
+if plot:
     plt.legend()
     plt.show()
 
