@@ -62,7 +62,7 @@ for file in tgt_lights:
 
 print("FILES USED FOR FRINGE MAP: ",len(tgts))
 
-fringe=CT.make_fringe_map(calib_path,filter)
+fringe=CT.make_fringe_map(calib_path,filter,bad_pixel_mask)
 
 
 CT.show_image(fringe,log_plt=True)
