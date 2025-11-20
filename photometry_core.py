@@ -378,24 +378,25 @@ class colour_calib_frame:
 
         
 
-    def colour_grad_fit(self):
+    def colour_grad_fit(self,col_a,col_b):
 
-        self.target_table["R-r"] = self.target_table["mag"] - self.frame_catalogue[self.cat_filter]
-        self.target_table["g-r"] = self.frame_catalogue["gmag"] - self.frame_catalogue["rmag"]
-        self.target_table["Scaled R-r"]=self.target_table["R-r"]-np.median(self.target_table["R-r"])
+        self.target_table["colour_dif"] = self.target_table["mag"] - self.frame_catalogue[self.cat_filter]
+        self.target_table["cat_colour"] = self.frame_catalogue[col_a] - self.frame_catalogue[col_b]
+        self.target_table["Scaled colour_dif"]=self.target_table["colour_dif"]-np.median(self.target_table["colour_dif"])
 
         fit = fitting.LinearLSQFitter()
         or_fit = fitting.FittingWithOutlierRemoval(fit, sigma_clip, niter=3, sigma=3.0)
         line_init = models.Linear1D()
 
-        fitted_line,mask = or_fit(line_init,self.target_table["g-r"].value,self.target_table["Scaled R-r"].value,weights=1/self.target_table["mag_error"])
-        filtered_data=np.ma.masked_array(self.target_table["Scaled R-r"].value,mask=mask)
+        fitted_line,mask = or_fit(line_init,self.target_table["cat_colour"].value,self.target_table["Scaled colour_dif"].value,weights=1/self.target_table["mag_error"])
+        filtered_data=np.ma.masked_array(self.target_table["Scaled colour_dif"].value,mask=mask)
         self.colour_grad = (fitted_line(2)-fitted_line(1))
-        return self.target_table["Scaled R-r"].value, self.target_table["g-r"].value, self.target_table["id"].value, self.colour_grad,filtered_data,self.target_table["mag_error"]
+        return self.target_table["Scaled colour_dif"].value, self.target_table["cat_colour"].value, self.target_table["id"].value, self.colour_grad,filtered_data,self.target_table["mag_error"]
 
     def colour_zero(self,gradient):
-        offset = np.mean(gradient * self.target_table["g-r"].value - self.target_table["R-r"].value)
-        #offset = np.median(gradient * self.target_table["g-r"].value)
+        offset = np.mean(gradient * self.target_table["cat_colour"].value - self.target_table["colour_dif"].value)
+        offset = offset - np.median(self.target_table["cat_colour"]*gradient)
+        #offset = np.median(gradient * self.target_table["cat_colour"].value)
         self.zero_term=offset
         return offset
     

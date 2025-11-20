@@ -14,10 +14,16 @@ all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
 pix_mask=CT.load_bad_pixel_mask(calib_path)
 
-tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","P29","50P","P113"]
+tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","P29","50P","P113","149P"]
 
 filter="R#642"
 cat_filter="rmag"
+
+colour_a="gmag"
+colour_b="rmag"
+
+plot=False
+
 pix_size=0.24  #size of a pixel in arcseconds
 star_cell_size=5 #half width of the cell used for star detection around a PS1 entry
 
@@ -86,7 +92,7 @@ for tgt_name in tgt_names:
 
         if subject_frame.no_stars==True:
             continue
-        new_R_r,new_gr,id,grad,filtered_R_r,mag_errors = subject_frame.colour_grad_fit()
+        new_R_r,new_gr,id,grad,filtered_R_r,mag_errors = subject_frame.colour_grad_fit(colour_a,colour_b)
 
         #print("Filtered Points: ",np.sum(filtered_R_r.mask))
         #R_r.extend(new_R_r)
@@ -100,15 +106,16 @@ for tgt_name in tgt_names:
 
 term=np.mean(grads)
 #print(grads)
-print (term)
+print (colour_a + " - " + colour_b + " Colour Term: ",term)
 
-for frame in calib_frames:
-    offset = frame.colour_zero(term)
-    plt.errorbar(frame.target_table["g-r"],frame.target_table["R-r"]+offset,yerr=frame.target_table["mag_error"],fmt="k.")
-    plt.plot(np.sort(frame.target_table["g-r"]),(term*np.sort(frame.target_table["g-r"])),label=frame.frame.header["object"])
-    #plt.errorbar(frame.frame_catalogue["rmag"],frame.target_table["mag"]-offset,yerr=frame.target_table["mag_error"],fmt="k.")
-#plt.plot(calib_frames[0].frame_catalogue["rmag"],(term*calib_frames[0].frame_catalogue["rmag"])-offset)
-plt.legend()
-plt.show()
+if plot:
+    for frame in calib_frames:
+        offset = frame.colour_zero(term)
+        plt.errorbar(frame.target_table["cat_colour"],frame.target_table["colour_dif"]+offset,yerr=frame.target_table["mag_error"],fmt="k.")
 
+        #plt.plot(np.sort(frame.target_table["cat_colour"]),(term*np.sort(frame.target_table["cat_colour"])),label=frame.frame.header["object"])
+        #plt.errorbar(frame.frame_catalogue["rmag"],frame.target_table["mag"]-offset,yerr=frame.target_table["mag_error"],fmt="k.")
+
+    plt.legend()
+    plt.show()
 
