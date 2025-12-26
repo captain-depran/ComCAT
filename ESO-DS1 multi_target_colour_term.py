@@ -14,7 +14,7 @@ all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"ALL_FITS")
 
 pix_mask=CT.load_bad_pixel_mask(calib_path)
 
-tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","P29","50P","P113"]
+tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","29P","50P","P113","48P"]
 
 filter="R#642"
 cat_filter="rmag"
@@ -50,6 +50,7 @@ for tgt_name in tgt_names:
         print("COMET ",tgt_name," NOT FOUND! SKIPPING...")
         continue
     ref_img=photo_core.ESO_image(calib_path,ref_name)
+    
 
     #wide field catalogue covering whole target area
     wide_cat=photo_core.field_catalogue(ref_img,
@@ -70,20 +71,22 @@ for tgt_name in tgt_names:
         pix_mask.data=pixel_mask_data
         img=photo_core.ESO_image(calib_path,image_name)
         img.update_zero(0)
-        print(image_name)
+        #print(image_name)
         if img.solved==False:
             print("NOT SOLVED, SKIPPING")
             print("-"*10)
             continue
+        
         subject_frame=photo_core.colour_calib_frame(img,
                                                     pix_mask,
                                                     edge_pad,
                                                     wide_cat,
                                                     cat_filter)
         
-        subject_frame.star_fitter(star_cell_size,
+        check = subject_frame.star_fitter(star_cell_size,
                                 fwhm_range=0.3)
-
+        if check == 1:
+            continue
 
         subject_frame.ap_phot(app_rad,
                             ann_in,

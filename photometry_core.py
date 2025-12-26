@@ -143,7 +143,7 @@ class ESO_image:
         return self.zero
 
     def update_zero(self,zero_point):
-        print(self.image_path)
+        #print(self.image_path)
         with fits.open(self.image_path,mode="update") as img:
                 img[0].header.update({"zero_point" : zero_point})
         
@@ -263,29 +263,32 @@ class colour_calib_frame:
     def star_fitter(self,star_cell_size,fwhm_plot=False,fwhm_range=0.1,*args,**kwargs):
         positions=[]
         fwhm=[]
-        for coord in self.cat_pix:
-            star_pos,fwhm_fit=local_peak(self.data_bkgsub,
-                                         coord,
-                                         star_cell_size,
-                                         self.field_span)
-            positions.append(star_pos)
-            fwhm.append(fwhm_fit)
-        positions=np.array(positions)
+        if len(self.cat_pix)==0:
+            return 1
+        else:
+            for coord in self.cat_pix:
+                star_pos,fwhm_fit=local_peak(self.data_bkgsub,
+                                            coord,
+                                            star_cell_size,
+                                            self.field_span)
+                positions.append(star_pos)
+                fwhm.append(fwhm_fit)
+            positions=np.array(positions)
 
-        self.target_table=Table()
-        self.target_table["id"] = self.cat_ids
-        self.target_table["pix_x"] = positions[:,0]
-        self.target_table["pix_y"] = positions[:,1]
-        self.target_table["pix_pos"] = positions
-        self.target_table["fwhm"] = fwhm
+            self.target_table=Table()
+            self.target_table["id"] = self.cat_ids
+            self.target_table["pix_x"] = positions[:,0]
+            self.target_table["pix_y"] = positions[:,1]
+            self.target_table["pix_pos"] = positions
+            self.target_table["fwhm"] = fwhm
 
-        if fwhm_plot:
-            plt.hist(fwhm,bins=20)
-            plt.show()
-        
-        self.avg_fwhm=np.median(fwhm)
-        self.invalid_ids.extend(self.target_table[np.abs(self.target_table["fwhm"].value-self.avg_fwhm) > fwhm_range ]["id"].value)
-        
+            if fwhm_plot:
+                plt.hist(fwhm,bins=20)
+                plt.show()
+            
+            self.avg_fwhm=np.median(fwhm)
+            self.invalid_ids.extend(self.target_table[np.abs(self.target_table["fwhm"].value-self.avg_fwhm) > fwhm_range ]["id"].value)
+            return 0
 
     def remove_bad_aps(self,apertures):
         app_stats=ApertureStats(self.frame.data,apertures,error=self.pix_err,mask=self.mask.data)

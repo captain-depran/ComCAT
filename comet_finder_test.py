@@ -79,5 +79,5 @@ comet_error = photo_core.lock_comet(cutout_stack)
 #photo_core.mark_target(comet_error+((len(cutout_stack[0])-1)/2),cutout_stack)
 
 
-plt.scatter(t,mags,marker=".")
-plt.show()
+#plt.scatter(t,mags,marker=".")
+#plt.show()
