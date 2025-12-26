@@ -415,7 +415,38 @@ def make_fringe_map(calib_path,filter,mask):
 
     return fringe_map
 
+
+def analyse_fringe(start_y,end_y,x,fringe_map,window_size=5,iters=10,*args,**kwargs):
+    fringe=fringe_map.data[x,start_y:end_y]    
+    iters-=1
+
+    if window_size%2==0:
+        print("WINDOW MUST BE ODD! ADDING 1!")
+        window_size+=1
+
+    for n in range(0,len(fringe)-1):
+        if np.isnan(fringe[n]):
+            fringe[n]=(fringe[n-1]+fringe[n+1])/2
+
+    fringe_smooth=moving_avg(fringe,window_size)
+    for n in range(0,iters):
+        fringe_smooth=moving_avg(fringe_smooth,window_size)
     
+    return fringe_smooth,fringe
+
+def moving_avg(data,window_size):
+    #odd_shift=(window_size%2)
+    pad=int(window_size/2)
+    if (window_size%2)==0:
+        print("WINDOW MUST BE ODD!")
+
+    elif (window_size%2)==1:
+        data=np.insert(data,0,(data[0]*np.ones(pad+1)))
+        data=np.insert(data,-1,(data[-1]*np.ones(pad)))
+    cumsum_vec=np.cumsum(data)
+    ma_vec=(cumsum_vec[window_size:] - cumsum_vec[:-window_size]) / window_size
+    return ma_vec
+
 
 
 

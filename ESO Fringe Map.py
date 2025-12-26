@@ -9,7 +9,7 @@ root_dir = pathlib.Path(__file__).resolve().parent
 
 px_scale=0.24
 
-filter="R#642"
+filter="i#705"
 
 trim_tags=["HIERARCH ESO DET OUT1 PRSCX","HIERARCH ESO DET OUT1 PRSCY","HIERARCH ESO DET OUT1 OVSCX","HIERARCH ESO DET OUT1 OVSCY"]
 ref_image=pathlib.Path(root_dir/"Data_set_1"/"block_1"/"BIAS"/"FREE"/"EFOSC.2009-01-27T21_00_47.752.fits")
@@ -47,10 +47,13 @@ for file in tgt_lights:
     name=DOT.extract_name(pathlib.Path(all_fits_path/file))
     if name in tgts:
         pass
+    #elif "seq" in name:
+        #pass
     elif name in black_list:
         pass
     else:
         tgts.append(name)
+        print(name)
         img=CT.reduce_img(pathlib.Path(all_fits_path/file),
                     calib_path,
                     trim,
