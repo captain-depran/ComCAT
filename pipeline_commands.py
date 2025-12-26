@@ -15,14 +15,19 @@ class process_filter:
                  input_path,
                  output_path,
                  ref_image,
-                 exclude_tgts):
+                 exclude_tgts=[],
+                 include_tgts=[],
+                 *args,
+                 **kwargs):
 
         self.filter=filter
         self.input_path=input_path
         self.output_path=output_path
-
         all_names=util.report_names(input_path)
-        tgt_names=all_names[np.isin(all_names,exclude_tgts,invert=True)]
+        if len(include_tgts)!=0:
+            tgt_names=all_names[np.isin(all_names,include_tgts,invert=False)]
+        else:
+            tgt_names=all_names[np.isin(all_names,exclude_tgts,invert=True)]
 
         root_dir = pathlib.Path(__file__).resolve().parent
         self.px_scale=0.24
