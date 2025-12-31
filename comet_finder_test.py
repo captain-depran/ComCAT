@@ -28,7 +28,7 @@ print("Images of Comet "+tgt_name+": ",len(all_image_names))
 if len(all_image_names)==0:
     exit()
 #image_name=all_image_names[1]
-for image_name in all_image_names:
+for image_name in tqdm(all_image_names):
     img=photo_core.ESO_image(calib_path,image_name)
     if img.solved==False:
         print("ERROR! NOT SOLVED!")
@@ -71,7 +71,7 @@ for pic in comet_pics:
     mags.append(pic.comet_ap_phot(5,1.2,1.5)+zero)
     t.append(pic.img.header["mjd-obs"])
     #pic.show_comet()
-    #photo_core.mark_target([pic.pad,pic.pad],pic.cutout)
+    photo_core.mark_target([pic.pad,pic.pad],pic.cutout)
 #pic.show_comet()
 
 cutout_stack = photo_core.composite_comet(all_frames)
