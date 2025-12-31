@@ -30,9 +30,7 @@ excluded_tgts=['17P_wht_nt1_cal_seq',
                'SKY,FLAT',
                'WAVE']
 
-include_tgts=["93P",
-              "94P",
-              "P113"]
+include_tgts=["50P"]
 
 
 job=ComCAT.process_filter(filter,
