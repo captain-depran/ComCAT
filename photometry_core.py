@@ -233,7 +233,7 @@ class field_catalogue:
 
 class colour_calib_frame:
     """
-    A class for a single frame used for calibrating the colour term. Your create one per frame used during the calibration process
+    A class for a single frame used for calibrating the colour term. You create one per frame used during the calibration process
     """
     def __init__(self,img,mask,edge_pad,field_catalogue,cat_filter,colour_median=0,*args, **kwargs):
         self.mask=mask
@@ -401,6 +401,8 @@ class colour_calib_frame:
         fit = fitting.LinearLSQFitter()
         or_fit = fitting.FittingWithOutlierRemoval(fit, sigma_clip, niter=3, sigma=3.0)
         line_init = models.Linear1D()
+
+        
 
         fitted_line,mask = or_fit(line_init,self.target_table["cat_colour"].value,self.target_table["Scaled colour_dif"].value,weights=1/self.target_table["mag_error"])
         filtered_data=np.ma.masked_array(self.target_table["Scaled colour_dif"].value,mask=mask)

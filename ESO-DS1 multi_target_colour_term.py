@@ -9,15 +9,15 @@ import time
 
 
 root_dir = pathlib.Path(__file__).resolve().parent
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS"/"PROCESSED FRAMES")
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
 pix_mask=CT.load_bad_pixel_mask(calib_path)
 
 tgt_names=["P2004F3","94P","93P","74P","2009AU16","P2005R2","29P","50P","P113","48P","149P"]
 
-filter="i#705"
-cat_filter="imag"
+filter="R#642"
+cat_filter="rmag"
 
 colour_a="gmag"
 colour_b="rmag"
