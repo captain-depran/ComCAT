@@ -15,8 +15,8 @@ trim_tags=["HIERARCH ESO DET OUT1 PRSCX","HIERARCH ESO DET OUT1 PRSCY","HIERARCH
 ref_image=pathlib.Path(root_dir/"Data_set_1"/"block_1"/"BIAS"/"FREE"/"EFOSC.2009-01-27T21_00_47.752.fits")
 extra_clip=100
 
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"ALL_FITS"/"PROCESSED FRAMES")
 
 trim=CT.set_trim(ref_image,extra_clip,*trim_tags)
 
@@ -31,8 +31,8 @@ avg_flat=CT.create_master_flat(filter,
                             all_fits_path,
                             calib_path)
 
-#bad_pixel_mask=CT.generate_bad_pixel_mask(all_fits_path,calib_path)
-bad_pixel_mask=CT.load_bad_pixel_mask(calib_path)
+bad_pixel_mask=CT.generate_bad_pixel_mask(all_fits_path,calib_path)
+#bad_pixel_mask=CT.load_bad_pixel_mask(calib_path)
 
 lights=ImageFileCollection(all_fits_path,keywords='*',glob_exclude="bias_sub_*")
 lights.sort(["object","mjd-obs"])
@@ -41,7 +41,7 @@ tgt_lights=lights.files_filtered(**criteria)
 
 
 tgts=[]
-black_list=["DOME","SKY,FLAT","FLAT","BIAS","WAVE"]
+black_list=["DOME","SKY,FLAT","FLAT","BIAS","WAVE","29Psky","OTHER"]
 
 for file in tgt_lights:
     name=DOT.extract_name(pathlib.Path(all_fits_path/file))
@@ -50,6 +50,8 @@ for file in tgt_lights:
     #elif "seq" in name:
         #pass
     elif name in black_list:
+        pass
+    elif "STD" in name:
         pass
     else:
         tgts.append(name)
