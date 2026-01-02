@@ -4,10 +4,10 @@ import pathlib
 filter="i#705"
 
 root_dir = pathlib.Path(__file__).resolve().parent
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS"/"PROCESSED FRAMES")
 
-ref_image = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"BIAS"/"FREE"/"EFOSC.2009-01-27T21_00_47.752.fits")
+ref_image = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"BIAS"/"FREE"/"EFOSC.2009-01-27T21_00_47.752.fits")
 
 excluded_tgts=['17P_wht_nt1_cal_seq',
                '17P_wht_nt3_cal_seq',
@@ -30,8 +30,8 @@ excluded_tgts=['17P_wht_nt1_cal_seq',
                'SKY,FLAT',
                'WAVE']
 
-include_tgts=["149P","P2004F3","2009AU16","29P","50P","74P","93P","94P","P113","P2005R2"]
-
+include_tgts=["149P","P2004F3","2009AU16","29P","50P","74P","93P","94P","P113","P2005R2","48P"]
+#include_tgts=["29P","67P"]
 
 job=ComCAT.process_filter(filter,
                           all_fits_path,
