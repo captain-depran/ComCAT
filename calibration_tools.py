@@ -148,7 +148,8 @@ def cosmic_ray_mask(ccd_image,gain,read_noise):
     return new_ccd.mask
 
 
-def reduce_img(tgt_path,out_path,trim,bias,flat,tgt_name,img_filter, mask = None, *args, **kwargs ):
+def reduce_img(tgt_path,out_path,trim,bias,flat,tgt_name,img_filter, 
+               fringe_map = None, fringe_points = None, mask = None, *args, **kwargs ):
     with fits.open(tgt_path) as img:
         read_noise=float(img[0].header["HIERARCH ESO DET OUT1 RON".lower()])
         gain=float(img[0].header["HIERARCH ESO DET OUT1 CONAD".lower()])
@@ -157,6 +158,9 @@ def reduce_img(tgt_path,out_path,trim,bias,flat,tgt_name,img_filter, mask = None
     tgt=ccdp.trim_image(tgt[trim])
     tgt=ccdp.subtract_bias(tgt,bias)
     tgt=ccdp.flat_correct(tgt,flat)
+
+    if fringe_map is not None and fringe_points is not None:
+        tgt.data = fringe_correction(tgt, fringe_points, fringe_map)
 
     mask = mask | cosmic_ray_mask(tgt,gain,read_noise)
     tgt.mask=tgt.mask | mask
@@ -415,24 +419,37 @@ def make_fringe_map(calib_path,filter,mask):
 
     return fringe_map
 
+def load_fringe_data(calib_path ,fringe_point_path, filter):
+    fringe_points=np.loadtxt(fringe_point_path,delimiter=",")
 
-def analyse_fringe(start_y,end_y,x,fringe_map,window_size=5,iters=10,*args,**kwargs):
-    fringe=fringe_map.data[x,start_y:end_y]    
-    iters-=1
+    fringe_map_path = pathlib.Path(calib_path/("FRINGE_MAP_"+filter+".fits"))
 
-    if window_size%2==0:
-        print("WINDOW MUST BE ODD! ADDING 1!")
-        window_size+=1
+    fringe = CCDData.read(fringe_map_path)
+    return fringe_points,fringe
 
-    for n in range(0,len(fringe)-1):
-        if np.isnan(fringe[n]):
-            fringe[n]=(fringe[n-1]+fringe[n+1])/2
+def fringe_correction(data,points,fringe):
+    ratios=[]
+    fringe.data=fringe.data-np.nanmin(fringe.data)
 
-    fringe_smooth=moving_avg(fringe,window_size)
-    for n in range(0,iters):
-        fringe_smooth=moving_avg(fringe_smooth,window_size)
-    
-    return fringe_smooth,fringe
+    for pairs in points:
+        x1=int(pairs[1])
+        y1=int(pairs[0])
+        x2=int(pairs[3])
+        y2=int(pairs[2])
+
+        map_dif=np.abs(fringe.data[x2,y2]-fringe.data[x1,y1])
+        frame_dif=np.abs(data.data[x2,y2]-data.data[x1,y1])
+
+        ratios.append(frame_dif/map_dif)
+
+    scale=np.median(ratios)
+
+    med=np.nanmedian(fringe.data)
+    fringe.data[fringe.mask==1] = med
+    reduced_img=data.data-(fringe.data*scale)
+    reduced_img[data.mask==1]=data.data[data.mask==1]
+
+    return reduced_img
 
 def moving_avg(data,window_size):
     #odd_shift=(window_size%2)
