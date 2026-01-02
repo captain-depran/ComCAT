@@ -17,6 +17,7 @@ class process_filter:
                  ref_image,
                  exclude_tgts=[],
                  include_tgts=[],
+                 make_bad_pixel_mask = True,
                  *args,
                  **kwargs):
 
@@ -37,7 +38,6 @@ class process_filter:
         extra_clip=100
 
 
-
         all_fits_path = input_path
         calib_path = output_path
 
@@ -53,9 +53,15 @@ class process_filter:
                                     self.trim,
                                     all_fits_path,
                                     calib_path)
+        
 
-        self.bad_pixel_mask=CT.generate_bad_pixel_mask(all_fits_path,calib_path)
-        #self.bad_pixel_mask=CT.load_bad_pixel_mask(calib_path)
+        if make_bad_pixel_mask:
+            self.bad_pixel_mask=CT.generate_bad_pixel_mask(all_fits_path,calib_path)
+        else:
+            self.bad_pixel_mask=CT.load_bad_pixel_mask(calib_path)
+
+
+        
 
         filter_tgts=[]
         print("--- COMETS IN FILTER BAND ---")
@@ -87,7 +93,6 @@ class process_filter:
     def reduce_and_plate_solve(self,tgt_name):
         all_fits_path=self.input_path
         calib_path=self.output_path
-        
 
         lights=ImageFileCollection(all_fits_path,keywords='*',glob_exclude="bias_sub_*")
         lights.sort(["object","mjd-obs"])
@@ -95,6 +100,7 @@ class process_filter:
         tgt_lights=lights.files_filtered(**criteria)
 
         for file in tgt_lights:
+            self.fringe_points,self.fringe_map = CT.load_fringe_data(calib_path,"fringe_points.txt",self.filter) #Load the fringe points and Map
             img=CT.reduce_img(pathlib.Path(all_fits_path/file),
                         calib_path,
                         self.trim,
@@ -102,7 +108,9 @@ class process_filter:
                         self.avg_flat,
                         tgt_name,
                         self.filter,
-                        mask=self.bad_pixel_mask)
+                        mask=self.bad_pixel_mask,
+                        fringe_map=self.fringe_map,
+                        fringe_points=self.fringe_points)
             
 
         science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt_name+"_"+self.filter+"*")
