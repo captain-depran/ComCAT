@@ -9,13 +9,13 @@ import pathlib
 import time
 
 root_dir = pathlib.Path(__file__).resolve().parent
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"ALL_FITS"/"PROCESSED FRAMES")
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_2"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS")
 
-tgt_name="93P"
-search_name="93P"
-eph_code=90000916
-filter="R#642"
+tgt_name="48P"
+search_name="48P"
+eph_code=90000568
+filter="i#705"
 
 obs_code=809
 
@@ -71,7 +71,7 @@ for pic in comet_pics:
     mags.append(pic.comet_ap_phot(5,1.2,1.5)+zero)
     t.append(pic.img.header["mjd-obs"])
     #pic.show_comet()
-    photo_core.mark_target([pic.pad,pic.pad],pic.cutout)
+    #photo_core.mark_target([pic.pad,pic.pad],pic.cutout)
 #pic.show_comet()
 
 cutout_stack = photo_core.composite_comet(all_frames)
@@ -79,5 +79,5 @@ comet_error = photo_core.lock_comet(cutout_stack)
 #photo_core.mark_target(comet_error+((len(cutout_stack[0])-1)/2),cutout_stack)
 
 
-#plt.scatter(t,mags,marker=".")
-#plt.show()
+plt.scatter(t,mags,marker=".")
+plt.show()
