@@ -159,6 +159,8 @@ def reduce_img(tgt_path,out_path,trim,bias,flat,tgt_name,img_filter,
     tgt=ccdp.subtract_bias(tgt,bias)
     tgt=ccdp.flat_correct(tgt,flat)
 
+    
+
     if fringe_map is not None and fringe_points is not None:
         tgt.data = fringe_correction(tgt, fringe_points, fringe_map)
 
@@ -427,8 +429,10 @@ def load_fringe_data(calib_path ,fringe_point_path, filter):
     fringe = CCDData.read(fringe_map_path)
     return fringe_points,fringe
 
-def fringe_correction(data,points,fringe):
+def fringe_correction(data,points,in_fringe):
     ratios=[]
+    clean_data=in_fringe
+    fringe=clean_data
     fringe.data=fringe.data-np.nanmin(fringe.data)
 
     for pairs in points:
