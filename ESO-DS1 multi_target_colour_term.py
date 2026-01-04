@@ -61,14 +61,18 @@ for tgt_name in tgt_names:
 
     all_image_names=photo_core.get_image_files(calib_path,tgt_name,filter)
 
-    mask=pix_mask
-    pixel_mask_data=np.array(pix_mask.data)
+    pixel_mask_data=np.copy(np.array(pix_mask.data))
+    mask=pix_mask.copy()
 
     first=True
     count=0
     for image_name in all_image_names:
-        plot_this=False
-        pix_mask.data=pixel_mask_data
+        if first:
+            plot_this=True
+            first=False
+        else:
+            plot_this=False
+        mask.data=np.copy(pixel_mask_data)
         img=photo_core.ESO_image(calib_path,image_name)
         img.update_zero(0)
         #print(image_name)
@@ -78,7 +82,7 @@ for tgt_name in tgt_names:
             continue
         
         subject_frame=photo_core.colour_calib_frame(img,
-                                                    pix_mask,
+                                                    mask,
                                                     edge_pad,
                                                     wide_cat,
                                                     cat_filter)
