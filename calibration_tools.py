@@ -397,6 +397,7 @@ def make_fringe_map(calib_path,filter,mask):
 
 
     fringe_map=avgstack(fringe_comp)
+    fringe_map.data=fringe_map.data
     fringe_map.mask=mask
     #fringe_map.data[mask==1]=np.nan
     #mean, median, std = sig(fringe_map.data, sigma=3.0)
@@ -436,22 +437,22 @@ def fringe_correction(data,points,in_fringe):
     fringe.data=fringe.data-np.nanmin(fringe.data)
 
     for pairs in points:
-        x1=int(pairs[1])
-        y1=int(pairs[0])
-        x2=int(pairs[3])
-        y2=int(pairs[2])
+        x1=int(pairs[0])
+        y1=int(pairs[1])
+        x2=int(pairs[2])
+        y2=int(pairs[3])
 
-        map_dif=np.abs(fringe.data[x2,y2]-fringe.data[x1,y1])
-        frame_dif=np.abs(data.data[x2,y2]-data.data[x1,y1])
+        map_dif=np.abs(fringe.data[y2,x2]-fringe.data[y1,x1])
+        frame_dif=np.abs(data.data[y2,x2]-data.data[y1,x1])
 
         ratios.append(frame_dif/map_dif)
 
-    scale=np.median(ratios)
+    scale=np.median(ratios)/3
 
-    med=np.nanmedian(fringe.data)
-    fringe.data[fringe.mask==1] = med
+    #med=np.nanmedian(fringe.data)
+    fringe.data[fringe.mask==1] = 0
     reduced_img=data.data-(fringe.data*scale)
-    reduced_img[data.mask==1]=data.data[data.mask==1]
+    #reduced_img[data.mask==1]=data.data[data.mask==1]
 
     return reduced_img
 
