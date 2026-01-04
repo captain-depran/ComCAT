@@ -8,7 +8,7 @@ import ccdproc as ccdp
 root_dir = pathlib.Path(__file__).resolve().parent
 
 px_scale=0.24
-tgt_name="2009AU16"
+tgt_name="149P"
 filter="i#705"
 
 trim_tags=["HIERARCH ESO DET OUT1 PRSCX","HIERARCH ESO DET OUT1 PRSCY","HIERARCH ESO DET OUT1 OVSCX","HIERARCH ESO DET OUT1 OVSCY"]
@@ -50,8 +50,8 @@ for file in tgt_lights:
                 tgt_name,
                 filter,
                 mask=bad_pixel_mask,
-                fringe_map=fringe_map,
-                fringe_points=fringe_points)
+                fringe_points=fringe_points,
+                fringe_map=fringe_map)
     
 
 science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt_name+"_"+filter+"*")
