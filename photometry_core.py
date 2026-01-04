@@ -248,9 +248,9 @@ class colour_calib_frame:
 
     def estimate_bkg(self):
         data=self.frame.data
-        mean, median, std = sig(data, sigma=3.0)
-        data[self.mask]=median
-        data[data<0]=median
+        #mean, median, std = sig(data, sigma=3.0)
+        data[self.mask]=0
+        data[data<0]=0
 
         sigma_clip = SigmaClip(sigma=3.0)
         bkg_estimator = MedianBackground()
