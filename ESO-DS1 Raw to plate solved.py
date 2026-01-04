@@ -8,8 +8,8 @@ import ccdproc as ccdp
 root_dir = pathlib.Path(__file__).resolve().parent
 
 px_scale=0.24
-tgt_name="149P"
-filter="i#705"
+tgt_name="P29"
+filter="R#642"
 
 trim_tags=["HIERARCH ESO DET OUT1 PRSCX","HIERARCH ESO DET OUT1 PRSCY","HIERARCH ESO DET OUT1 OVSCX","HIERARCH ESO DET OUT1 OVSCY"]
 ref_image=pathlib.Path(root_dir/"Data_set_1"/"block_1"/"BIAS"/"FREE"/"EFOSC.2009-01-27T21_00_47.752.fits")
