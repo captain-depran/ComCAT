@@ -426,6 +426,7 @@ class comet_frame:
         self.date=float(mjd_date.jd)
         self.name=_tgt
         self.obs_code=_obs_code #observatory code where imagery was taken
+        self.img.data[self.img.data < 0]=0  #fix any sub-zero values
 
     def find_comet(self,eph_code=0,*arg,**kwargs):
         if eph_code!=0:
@@ -506,7 +507,7 @@ class comet_frame:
 
 def composite_comet(frames):
     if (isinstance(frames[0],np.ndarray)):
-        sum=np.sum(frames,axis=0)
+        #sum=np.sum(frames,axis=0)
         avg=np.median(frames,axis=0)
         return avg
     else:
@@ -515,7 +516,7 @@ def composite_comet(frames):
     
 def lock_comet(og_img,fwhm=6,*args,**kwargs):
     img=np.copy(og_img)
-    img[img > 2000] = 0 
+    img[img > 10000] = 0 
     result=fit_gauss(img,fwhm=fwhm).results
     center=(len(img[0])-1)/2
     jpl_offset=np.array([result["x_fit"][0],result["y_fit"][0]])
@@ -528,3 +529,25 @@ def mark_target(pos,image_data):
     aperture.plot(color="red",lw=1.5,alpha=0.5)
     plt.axis("scaled")
     plt.show()
+
+def surf_brightness(pos,image_data,min=3,max=20,step_size=1,*args,**kwargs):
+    sums=[]
+    radii=[]
+    for rad in range(min,max,step_size):
+        #area=np.pi*rad*rad
+
+        bkg_annulus = CircularAnnulus(pos, r_in = 1.1 * max, r_out = 1.5 * max)
+        bkg_app_stats = ApertureStats(image_data,bkg_annulus)
+        bkg_mean  = bkg_app_stats.mean
+
+        aperture = CircularAperture(pos, r=rad)
+        aperture_area = aperture.area_overlap(image_data)
+
+        total_bkg=bkg_mean*aperture_area
+
+        
+        phot_table = aperture_photometry(image_data,aperture)
+        sums.append(((phot_table["aperture_sum"].value[0])-total_bkg)/aperture_area)
+        radii.append(np.sqrt(aperture_area/np.pi))
+
+    return sums,radii
