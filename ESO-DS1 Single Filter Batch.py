@@ -1,8 +1,8 @@
 import pipeline_commands as ComCAT
 import pathlib
 
-filter="i#705"
-block=1
+filter="R#642"
+block=3
 
 block = str("block_"+str(block))
 root_dir = pathlib.Path(__file__).resolve().parent
@@ -32,8 +32,8 @@ excluded_tgts=['17P_wht_nt1_cal_seq',
                'SKY,FLAT',
                'WAVE']
 
-include_tgts=["P2004F3","2009AU16","29P","50P","74P","93P","94P","P113","P2005R2","48P","149P"]
-#include_tgts=["149P"]
+#include_tgts=["P2004F3","2009AU16","29P","50P","74P","93P","94P","P113","P2005R2","48P","P29"]
+include_tgts=["149P"]
 
 job=ComCAT.process_filter(filter,
                           all_fits_path,
