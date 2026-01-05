@@ -30,6 +30,9 @@ for name,jpl_name,eph in zip(names,jpl_names,ephs):
                                logy=True,
                                y_relative=False)
     
+    
+    #plt.scatter(comet.t,comet.mags)
+    #plt.show()
 
 plt.legend()
 plt.xlabel("Radius (Arcsecs)")
