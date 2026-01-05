@@ -438,6 +438,10 @@ class comet_frame:
         self.tgt_DEC=comet_eph["DEC"]
         self.comet_pix_location=self.img.wcs.world_to_pixel(coords.SkyCoord(ra=self.tgt_RA,dec=self.tgt_DEC,unit="deg",frame="fk5"))
         self.comet_pix_location=np.array(self.comet_pix_location).flatten()
+        if self.comet_pix_location[0] < 0 or self.comet_pix_location[1] < 0 or self.comet_pix_location[0] > len(self.img.data[0]) or self.comet_pix_location[1] > len(self.img.data[0]):
+            return False
+        else:
+            return True 
         #print(self.comet_pix_location)
     
     def show_comet(self):
@@ -504,6 +508,136 @@ class comet_frame:
         """
         return comet_mag
 
+class study_comet:
+    def __init__(self,tgt_name,
+                 search_name,
+                 filt,
+                 calib_path,
+                 eph_code=0,
+                 obs_code=809,
+                 plot_stack=False,
+                 *args, **kwargs):
+        self.tgt_name=tgt_name
+        self.jpl_name=search_name
+        self.filter = filt
+        self.calib_path = calib_path
+        self.obs_code = obs_code
+        self.eph_code = eph_code
+        self.all_frames = []
+        self.comet_pics = []
+
+
+        all_image_names = self.load_files()
+        self.lock_on_phase_1(all_image_names)
+        self.lock_on_phase_2(plot_stack=plot_stack)
+
+        print("Images used: ",len(self.t))
+        self.t=np.array(self.t)
+        if len(self.t !=0):
+            self.t=(self.t-self.t[0])*24*60
+
+        self.cutout_stack = composite_comet(self.all_frames)
+        self.comet_error = lock_comet(self.cutout_stack)
+
+
+    def load_files(self):
+        all_image_names=get_image_files(self.calib_path,self.tgt_name,self.filter)
+        print("Images of Comet "+self.tgt_name+": ",len(all_image_names))
+        if len(all_image_names)==0:
+            exit()
+
+        return all_image_names
+
+    def lock_on_phase_1(self,image_names):
+        first = True
+        for image_name in tqdm(image_names):
+            img=ESO_image(self.calib_path,image_name)
+            if img.solved==False:
+                print("ERROR! NOT SOLVED!")
+                continue
+            comet_pic=comet_frame(self.obs_code,self.jpl_name,img)
+            good_find = comet_pic.find_comet(eph_code=self.eph_code)
+            if good_find == False:
+                continue
+            comet_pic.cutout_comet()
+
+            if first:
+                first=False
+                pass
+            elif np.shape(comet_pic.cutout) != last_shape:
+                continue
+            last_shape = np.shape(comet_pic.cutout)
+            self.comet_pics.append(comet_pic)
+            self.all_frames.append(comet_pic.cutout)
+        
+        self.all_frames=np.array(self.all_frames)
+        if len(self.all_frames)==0:
+            print("ERROR: No Solved Images")
+            exit()
+
+        cutout_stack = composite_comet(self.all_frames)
+        self.comet_error = lock_comet(cutout_stack,fwhm=6)
+    
+    def lock_on_phase_2(self,plot_stack=False,*args,**kwargs):
+        all_frames=[]
+        mags=[]
+        t=[]
+        unscaled=False
+        for pic in self.comet_pics:
+            pic.offset=self.comet_error
+            pic.apply_correction()
+            pic.cutout_comet(cutout_size=30)
+
+            pic.refine_lock() #Refine the lock on the comet by refitting a gaussian per image now we know we are *basically* on top of the comet
+
+            all_frames.append(pic.cutout)
+            zero=pic.img.get_zero()
+            if zero == 0:
+                unscaled=True
+            print(pic.img.image_path)
+            print("Zero: ",zero)
+            mags.append(pic.comet_ap_phot(5,1.2,1.5)+zero)
+            t.append(pic.img.header["mjd-obs"])
+
+        self.mags=mags
+        self.t=t
+        self.all_frames=all_frames
+        if unscaled:
+            print("WARNING, COMET HAS NO KNOWN ZERO POINT")
+        if plot_stack:
+            cutout_stack = composite_comet(all_frames)
+            comet_error = lock_comet(cutout_stack)
+            mark_target(comet_error+((len(cutout_stack[0])-1)/2),cutout_stack)
+    
+    def plot_surf_brightness(self,min=1,
+                             max=20,
+                             y_relative = False,
+                             logx=True,
+                             logy=True,
+                             *args,**kwargs):
+        sums,radii=surf_brightness(self.comet_error+((len(self.cutout_stack[0])-1)/2),
+                           self.cutout_stack,
+                           step_size=1,
+                           min=min,
+                           max=max)
+        radii=np.array(radii) * 0.24
+        if logx:
+            radii = np.log(radii)
+
+        if y_relative:
+            sums=sums/np.max(sums)
+
+        if logy:
+            sums = np.log(sums)
+        
+
+        plt.plot(radii,sums,label=self.jpl_name)
+    
+    def show_full_stack(self):
+        mark_target(self.comet_error+((len(self.cutout_stack[0])-1)/2),self.cutout_stack)
+
+
+
 
 def composite_comet(frames):
     if (isinstance(frames[0],np.ndarray)):
@@ -514,9 +648,9 @@ def composite_comet(frames):
         print("ERROR, IMAGES ARE NOT NUMPY ARRAYS")
         return 0
     
-def lock_comet(og_img,fwhm=6,*args,**kwargs):
+def lock_comet(og_img,fwhm=6,cutoff=10000,*args,**kwargs):
     img=np.copy(og_img)
-    img[img > 10000] = 0 
+    img[img > cutoff] = 0 
     result=fit_gauss(img,fwhm=fwhm).results
     center=(len(img[0])-1)/2
     jpl_offset=np.array([result["x_fit"][0],result["y_fit"][0]])
@@ -525,7 +659,7 @@ def lock_comet(og_img,fwhm=6,*args,**kwargs):
 
 def mark_target(pos,image_data):
     aperture = CircularAperture(pos, r=len(image_data[0])/50)
-    plt.imshow(image_data,origin="lower",cmap="grey")
+    plt.imshow(image_data,origin="lower",cmap="grey",norm=LogNorm())
     aperture.plot(color="red",lw=1.5,alpha=0.5)
     plt.axis("scaled")
     plt.show()
@@ -544,6 +678,7 @@ def surf_brightness(pos,image_data,min=3,max=20,step_size=1,*args,**kwargs):
         aperture_area = aperture.area_overlap(image_data)
 
         total_bkg=bkg_mean*aperture_area
+        
 
         
         phot_table = aperture_photometry(image_data,aperture)
