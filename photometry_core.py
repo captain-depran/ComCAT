@@ -331,6 +331,8 @@ class colour_calib_frame:
 
         for app_mask in apertures.to_mask():
             app_mask=app_mask.to_image(self.mask.data.shape,dtype = bool)
+            if np.sum(app_mask) is None:
+                continue
             self.mask.data = np.ma.mask_or(self.mask.data,app_mask)
 
         """

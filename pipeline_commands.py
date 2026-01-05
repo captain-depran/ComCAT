@@ -100,7 +100,11 @@ class process_filter:
         tgt_lights=lights.files_filtered(**criteria)
 
         for file in tgt_lights:
-            self.fringe_points,self.fringe_map = CT.load_fringe_data(calib_path,"fringe_points.txt",self.filter) #Load the fringe points and Map
+            if "B" in self.filter:
+                self.fringe_map=None
+                self.fringe_points=None
+            else:
+                self.fringe_points,self.fringe_map = CT.load_fringe_data(calib_path,"fringe_points.txt",self.filter) #Load the fringe points and Map
             img=CT.reduce_img(pathlib.Path(all_fits_path/file),
                         calib_path,
                         self.trim,
