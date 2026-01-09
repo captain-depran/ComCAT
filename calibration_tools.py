@@ -435,6 +435,7 @@ def fringe_correction(data,points,in_fringe):
     clean_data=in_fringe
     fringe=clean_data
     fringe.data=fringe.data-np.nanmin(fringe.data)
+    fringe.data=fringe.data/np.nanmax(fringe.data)
 
     for pairs in points:
         x1=int(pairs[0])
@@ -447,7 +448,7 @@ def fringe_correction(data,points,in_fringe):
 
         ratios.append(frame_dif/map_dif)
 
-    scale=np.median(ratios)/3
+    scale=np.median(ratios)
 
     #med=np.nanmedian(fringe.data)
     fringe.data[fringe.mask==1] = 0

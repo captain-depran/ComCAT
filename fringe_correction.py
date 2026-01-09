@@ -17,16 +17,17 @@ root_dir = pathlib.Path(__file__).resolve().parent
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 
-filter="R#642"
+filter="i#705"
 
 fringe_path = pathlib.Path(calib_path / str("FRINGE_MAP_"+filter+".fits"))
-image_path = pathlib.Path(calib_path / "149P_R#642_54859.06136533.fits") 
+image_path = pathlib.Path(calib_path / "93P_i#705_54859.36862852.fits") 
 
 fringe = CCDData.read(fringe_path)
 data = CCDData.read(image_path)
 ratios=[]
 
 fringe.data=fringe.data-np.nanmin(fringe.data)
+fringe.data=fringe.data/np.nanmax(fringe.data)
 
 for pairs in fringe_coords:
     x1=int(pairs[0])
@@ -43,7 +44,7 @@ for pairs in fringe_coords:
 
 ratios=np.array(ratios)
 print(ratios)
-scale=np.median(ratios)/3
+scale=np.median(ratios)
 print(scale)
 
 #med=np.nanmedian(fringe.data)
