@@ -1,8 +1,8 @@
 import pipeline_commands as ComCAT
 import pathlib
 
-filter="B#639"
-block=3
+filter="i#705"
+block=1
 
 block = str("block_"+str(block))
 root_dir = pathlib.Path(__file__).resolve().parent
@@ -39,6 +39,7 @@ job=ComCAT.process_filter(filter,
                           all_fits_path,
                           calib_path,
                           ref_image,
-                          include_tgts=include_tgts)
+                          include_tgts=include_tgts,
+                          plate_solve=True)
 
 job.run()

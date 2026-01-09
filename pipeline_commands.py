@@ -18,12 +18,14 @@ class process_filter:
                  exclude_tgts=[],
                  include_tgts=[],
                  make_bad_pixel_mask = True,
+                 plate_solve = True,
                  *args,
                  **kwargs):
 
         self.filter=filter
         self.input_path=input_path
         self.output_path=output_path
+        self.plate_solve=plate_solve
         all_names=util.report_names(input_path)
         if len(include_tgts)!=0:
             tgt_names=all_names[np.isin(all_names,include_tgts,invert=False)]
@@ -87,10 +89,10 @@ class process_filter:
     def run(self):
         for tgt in self.filter_tgts:
             print("COMET: "+tgt)
-            self.reduce_and_plate_solve(tgt)
+            self.reduce_and_plate_solve(tgt,self.plate_solve)
             print("-"*10)
 
-    def reduce_and_plate_solve(self,tgt_name):
+    def reduce_and_plate_solve(self,tgt_name,plate_solve=True,*args,**kwargs):
         all_fits_path=self.input_path
         calib_path=self.output_path
 
@@ -115,13 +117,13 @@ class process_filter:
                         mask=self.bad_pixel_mask,
                         fringe_map=self.fringe_map,
                         fringe_points=self.fringe_points)
-            
-
-        science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt_name+"_"+self.filter+"*")
-        science_files=science.files_filtered(**criteria)
-        CT.batch_plate_solve(calib_path,
-                        science_files,
-                        self.px_scale,
-                        self.bad_pixel_mask,
-                        6,
-                        8)
+        if plate_solve:
+            science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt_name+"_"+self.filter+"*")
+            science_files=science.files_filtered(**criteria)
+            CT.batch_plate_solve(calib_path,
+                            science_files,
+                            self.px_scale,
+                            self.bad_pixel_mask,
+                            6,
+                            8)
+        
