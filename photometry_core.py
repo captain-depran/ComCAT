@@ -255,7 +255,7 @@ class colour_calib_frame:
         sigma_clip = SigmaClip(sigma=3.0)
         bkg_estimator = MedianBackground()
         bkg = Background2D(data, (20, 20), filter_size=(3, 3),
-                            sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
+                            sigma_clip=sigma_clip, bkg_estimator=bkg_estimator,exclude_percentile=20)
         self.data_bkgsub=data-bkg.background
         self.pix_err = np.sqrt(data)
         self.frame.data=data
@@ -493,10 +493,10 @@ class comet_frame:
         comet_sum = phot_table["aperture_sum"].value[0]
         comet_counts = comet_sum - total_bkg
         comet_mag = -2.5*np.log10(comet_counts/self.img.exptime)
-        print(comet_counts)
-        print(total_bkg)
-        print(comet_mag)
-        print("-"*10)     
+        #print(comet_counts)
+        #print(total_bkg)
+        #print(comet_mag)
+        #print("-"*10)     
 
 
         """
@@ -596,8 +596,10 @@ class study_comet:
             zero=pic.img.get_zero()
             if zero == 0:
                 unscaled=True
-            print(pic.img.image_path)
-            print("Zero: ",zero)
+                continue
+            
+            #print(pic.img.image_path)
+            #print("Zero: ",zero)
             mags.append(pic.comet_ap_phot(5,1.2,1.5)+zero)
             t.append(pic.img.header["mjd-obs"])
 
