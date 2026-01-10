@@ -5,6 +5,9 @@ import utility_functions as util
 import pathlib
 from ccdproc import ImageFileCollection
 import ccdproc as ccdp
+from astropy.nddata import CCDData
+from astropy.io import fits
+import matplotlib.pyplot as plt
 
 import os
 import numpy as np
@@ -19,6 +22,8 @@ class process_filter:
                  include_tgts=[],
                  make_bad_pixel_mask = True,
                  plate_solve = True,
+                 fringe_correct = True,
+                 fringe_exptime_limit=0,
                  *args,
                  **kwargs):
 
@@ -26,7 +31,10 @@ class process_filter:
         self.input_path=input_path
         self.output_path=output_path
         self.plate_solve=plate_solve
+        self.fringe_correct=fringe_correct
+        self.exptime_limit=fringe_exptime_limit
         all_names=util.report_names(input_path)
+
         if len(include_tgts)!=0:
             tgt_names=all_names[np.isin(all_names,include_tgts,invert=False)]
         else:
@@ -89,7 +97,7 @@ class process_filter:
     def run(self):
         for tgt in self.filter_tgts:
             print("COMET: "+tgt)
-            self.reduce_and_plate_solve(tgt,self.plate_solve)
+            self.reduce_and_plate_solve(tgt,plate_solve=self.plate_solve)
             print("-"*10)
 
     def reduce_and_plate_solve(self,tgt_name,plate_solve=True,*args,**kwargs):
@@ -100,13 +108,19 @@ class process_filter:
         lights.sort(["object","mjd-obs"])
         criteria={'object' : tgt_name, "ESO INS FILT1 NAME".lower():self.filter}
         tgt_lights=lights.files_filtered(**criteria)
+        lights=lights.filter(**criteria)
+        times=np.array(lights.summary["exptime"])
 
-        for file in tgt_lights:
-            if "B" in self.filter:
+        for file,time in zip(tgt_lights,times):
+            if time > self.exptime_limit  and self.fringe_correct==True:
+                if ("i" in self.filter or "R" in self.filter or "V" in self.filter):
+                    self.fringe_points,self.fringe_map = CT.load_fringe_data(calib_path,"fringe_points.txt",self.filter) #Load the fringe points and Map
+                else:
+                    self.fringe_map=None
+                    self.fringe_points=None
+            else:
                 self.fringe_map=None
                 self.fringe_points=None
-            else:
-                self.fringe_points,self.fringe_map = CT.load_fringe_data(calib_path,"fringe_points.txt",self.filter) #Load the fringe points and Map
             img=CT.reduce_img(pathlib.Path(all_fits_path/file),
                         calib_path,
                         self.trim,
@@ -126,4 +140,90 @@ class process_filter:
                             self.bad_pixel_mask,
                             6,
                             8)
+
+class fringe_correct_existing:
+    def __init__(self,                 
+                 filter,
+                 calib_path,
+                 exclude_tgts=[],
+                 include_tgts=[],
+                 *args,
+                 **kwargs):
+
+        self.filter=filter
         
+        root_dir = pathlib.Path(__file__).resolve().parent
+        self.px_scale=0.24
+
+        #self.bad_pixel_mask=CT.load_bad_pixel_mask(calib_path)
+
+
+        self.calib_path=calib_path        
+
+    def run(self,time_thresh=0,report=False,*args,**kwargs):
+        self.times=[]
+        self.scales=[]
+        self.ratios=[]
+        if report:
+            self.measure_fringe()
+        else:
+            self.correct_fringe(exptime_thresh=time_thresh)
+
+    def correct_fringe(self,exptime_thresh=0,*args,**kwargs):
+        lights=ImageFileCollection(self.calib_path,keywords='*')
+        criteria={"ESO INS FILT1 NAME".lower():self.filter}
+        tgt_lights=lights.files_filtered(**criteria)
+
+        for file in tgt_lights:
+            if len(file) < 20 or "MAP" in file:
+                continue
+            else:
+                print(file)
+                out_path=self.calib_path
+                with fits.open(pathlib.Path(out_path/file)) as img:
+                    exptime=img[0].header["exptime"]
+                    print(exptime)
+                if exptime < exptime_thresh:
+                    print("SKIP!")
+                    continue
+                else:
+                    tgt=CCDData.read(pathlib.Path(out_path/file))
+                    self.fringe_points,self.fringe_map = CT.load_fringe_data(self.calib_path,"fringe_points.txt",self.filter) #Load the fringe points and Map
+                    tgt.data = CT.fringe_correction(tgt, self.fringe_points, self.fringe_map)
+
+                    out_path=pathlib.Path(out_path/file)
+                    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+                    tgt.write(str(out_path),overwrite=True)
+
+    def measure_fringe(self):
+        lights=ImageFileCollection(self.calib_path,keywords='*',glob_exclude="bias_sub_*")
+        criteria={"ESO INS FILT1 NAME".lower():self.filter}
+        tgt_lights=lights.files_filtered(**criteria)
+        for file in tgt_lights:
+            if len(file) < 20 or "MAP" in file:
+                continue
+            else:
+                print(file)
+                out_path=self.calib_path
+                tgt=CCDData.read(pathlib.Path(out_path/file))
+                self.fringe_points,self.fringe_map = CT.load_fringe_data(self.calib_path,"fringe_points.txt",self.filter) #Load the fringe points and Map
+                scale,ratios = CT.fringe_correction(tgt, self.fringe_points, self.fringe_map,report_only=True)
+
+                with fits.open(pathlib.Path(out_path/file)) as img:
+                    exptime=img[0].header["exptime"]
+                
+                self.times.append(exptime)
+                self.scales.append(scale)
+                self.ratios.append(ratios)
+
+    def plot_fringe_scales(self):
+        plt.scatter(self.times,self.scales)
+        plt.show()
+
+    def plot_fringe_stats(self):
+        ranges=[]
+        for ratio_set,scale in zip(self.ratios,self.scales):
+            range = np.std(ratio_set)
+            ranges.append(range)
+        plt.scatter(self.times,ranges)
+        plt.show()

@@ -430,12 +430,12 @@ def load_fringe_data(calib_path ,fringe_point_path, filter):
     fringe = CCDData.read(fringe_map_path)
     return fringe_points,fringe
 
-def fringe_correction(data,points,in_fringe):
+def fringe_correction(data,points,in_fringe,report_only=False,*args,**kwargs):
     ratios=[]
-    clean_data=in_fringe
-    fringe=clean_data
-    fringe.data=fringe.data-np.nanmin(fringe.data)
-    fringe.data=fringe.data/np.nanmax(fringe.data)
+    fringe=in_fringe.copy()
+    #fringe.data=fringe.data-np.nanmin(fringe.data)
+    #fringe.data=fringe.data/np.nanmax(fringe.data)
+    fringe.data=fringe.data-np.nanmedian(fringe.data)
 
     for pairs in points:
         x1=int(pairs[0])
@@ -446,15 +446,19 @@ def fringe_correction(data,points,in_fringe):
         map_dif=np.abs(fringe.data[y2,x2]-fringe.data[y1,x1])
         frame_dif=np.abs(data.data[y2,x2]-data.data[y1,x1])
 
-        ratios.append(frame_dif/map_dif)
+        if map_dif < 0.01:
+            continue
 
+        ratios.append(frame_dif/map_dif)
     scale=np.median(ratios)
+    if report_only:
+        return scale,ratios
 
     #med=np.nanmedian(fringe.data)
     fringe.data[fringe.mask==1] = 0
     reduced_img=data.data-(fringe.data*scale)
     #reduced_img[data.mask==1]=data.data[data.mask==1]
-
+    #print(scale)
     return reduced_img
 
 def moving_avg(data,window_size):

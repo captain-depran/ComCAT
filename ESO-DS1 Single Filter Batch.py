@@ -35,11 +35,22 @@ excluded_tgts=['17P_wht_nt1_cal_seq',
 include_tgts=["P2004F3","2009AU16","29P","50P","74P","93P","94P","P113","P2005R2","48P","P29","149P"]
 #include_tgts=["P2005R2","P29"]
 
+
 job=ComCAT.process_filter(filter,
                           all_fits_path,
                           calib_path,
                           ref_image,
                           include_tgts=include_tgts,
-                          plate_solve=True)
+                          plate_solve=True,
+                          fringe_correct=True,
+                          fringe_exptime_limit=30)
 
 job.run()
+"""
+
+job = ComCAT.fringe_correct_existing(filter,
+                                     calib_path,
+                                     include_tgts=include_tgts)
+
+job.run(time_thresh=62)
+"""

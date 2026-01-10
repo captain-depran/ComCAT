@@ -47,8 +47,10 @@ def get_image_data(calib_path,tgt,filter):
     return data
 
 def get_image_files(calib_path,tgt,filter):
+    print(tgt)
     criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
     science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt+"_"+filter+"*")
+    #science.sort("mjd-obs")
     science_files=science.files_filtered(**criteria)
     return science_files
 
@@ -422,13 +424,16 @@ class colour_calib_frame:
         return offset
     
 class comet_frame:
-    def __init__(self,_obs_code,_tgt,_img,*args, **kwargs):
+    def __init__(self,_obs_code,_tgt,_img,comet_pixel_max=10000,*args, **kwargs):
         self.img=_img #an instance of an ESO image object, or other observatory configuration
         mjd_date=Time(float(_img.header["mjd-obs"]),format="mjd")
         self.date=float(mjd_date.jd)
         self.name=_tgt
         self.obs_code=_obs_code #observatory code where imagery was taken
         self.img.data[self.img.data < 0]=0  #fix any sub-zero values
+        #img_min=np.nanmin(self.img.data)
+        #self.img.data=self.img.data-img_min
+        self.comet_count_cutoff = comet_pixel_max
 
     def find_comet(self,eph_code=0,*arg,**kwargs):
         if eph_code!=0:
@@ -456,14 +461,14 @@ class comet_frame:
         plt.show()
 
 
-    def cutout_comet(self,cutout_size=100,manual_shift=0,*args,**kwargs):
+    def cutout_comet(self,cutout_size=100,manual_shift=[0,0],*args,**kwargs):
 
         self.pad=int(cutout_size/2)
         center=self.comet_pix_location
-        x_low=int(center[0]-self.pad)+manual_shift
-        x_high=int(center[0]+self.pad)+manual_shift
-        y_low=int(center[1]-self.pad)+manual_shift
-        y_high=int(center[1]+self.pad)+manual_shift
+        x_low=int(center[0]-self.pad)+manual_shift[0]
+        x_high=int(center[0]+self.pad)+manual_shift[0]
+        y_low=int(center[1]-self.pad)+manual_shift[1]
+        y_high=int(center[1]+self.pad)+manual_shift[1]
         self.cutout=self.img.data[y_low:y_high+1,x_low:x_high+1]
 
     def apply_correction(self):
@@ -471,11 +476,11 @@ class comet_frame:
         self.comet_pix_location=self.comet_pix_location+self.offset
         #print("BEFORE: ",self.jpl_location," | AFTER: ",self.comet_pix_location)
 
-    def refine_lock(self):
+    def refine_lock(self,cutout_size=100,*args,**kwargs):
 
-        self.offset=lock_comet(self.cutout)
+        self.offset=lock_comet(self.cutout,cutoff=self.comet_count_cutoff)
         self.apply_correction()
-        self.cutout_comet()
+        self.cutout_comet(cutout_size=cutout_size)
     
     def comet_ap_phot(self,app_rad,ann_in,ann_out):
 
@@ -518,20 +523,32 @@ class study_comet:
                  eph_code=0,
                  obs_code=809,
                  plot_stack=False,
+                 comet_pixel_max=10000,
+                 cutout_size=100,
+                 show_frames=False,
+                 man_shift=[0,0],
                  *args, **kwargs):
+        
         self.tgt_name=tgt_name
         self.jpl_name=search_name
         self.filter = filt
         self.calib_path = calib_path
         self.obs_code = obs_code
         self.eph_code = eph_code
+        self.man_shift=man_shift
         self.all_frames = []
         self.comet_pics = []
-
+        self.comet_pixel_max=comet_pixel_max
+        self.cutout_size=cutout_size
+        self.skip_this=False
 
         all_image_names = self.load_files()
+        if all_image_names is None:
+            self.skip_this=True
+            return None
+        
         self.lock_on_phase_1(all_image_names)
-        self.lock_on_phase_2(plot_stack=plot_stack)
+        self.lock_on_phase_2(plot_stack=plot_stack,show_frames=show_frames)
 
         print("Images used: ",len(self.t))
         self.t=np.array(self.t)
@@ -539,14 +556,14 @@ class study_comet:
             self.t=(self.t-self.t[0])*24*60
 
         self.cutout_stack = composite_comet(self.all_frames)
-        self.comet_error = lock_comet(self.cutout_stack)
+        self.comet_error = lock_comet(self.cutout_stack,cutoff=comet_pixel_max)
 
 
     def load_files(self):
         all_image_names=get_image_files(self.calib_path,self.tgt_name,self.filter)
         print("Images of Comet "+self.tgt_name+": ",len(all_image_names))
         if len(all_image_names)==0:
-            exit()
+            return None
 
         return all_image_names
 
@@ -557,11 +574,12 @@ class study_comet:
             if img.solved==False:
                 print("ERROR! NOT SOLVED!")
                 continue
-            comet_pic=comet_frame(self.obs_code,self.jpl_name,img)
+            comet_pic=comet_frame(self.obs_code,self.jpl_name,img,comet_pixel_max=self.comet_pixel_max)
             good_find = comet_pic.find_comet(eph_code=self.eph_code)
+            comet_pic.comet_pix_location+=self.man_shift
             if good_find == False:
                 continue
-            comet_pic.cutout_comet()
+            comet_pic.cutout_comet(cutout_size=self.cutout_size)
 
             if first:
                 first=False
@@ -578,9 +596,9 @@ class study_comet:
             exit()
 
         cutout_stack = composite_comet(self.all_frames)
-        self.comet_error = lock_comet(cutout_stack,fwhm=6)
+        self.comet_error = lock_comet(cutout_stack,fwhm=6,cutoff=self.comet_pixel_max)
     
-    def lock_on_phase_2(self,plot_stack=False,*args,**kwargs):
+    def lock_on_phase_2(self,plot_stack=False,show_frames=False,*args,**kwargs):
         all_frames=[]
         mags=[]
         t=[]
@@ -588,15 +606,20 @@ class study_comet:
         for pic in self.comet_pics:
             pic.offset=self.comet_error
             pic.apply_correction()
-            pic.cutout_comet(cutout_size=30)
+            pic.cutout_comet(cutout_size=self.cutout_size)
 
-            pic.refine_lock() #Refine the lock on the comet by refitting a gaussian per image now we know we are *basically* on top of the comet
+            pic.refine_lock(cutout_size=self.cutout_size) #Refine the lock on the comet by refitting a gaussian per image now we know we are *basically* on top of the comet
 
             all_frames.append(pic.cutout)
+            if show_frames:
+                mark_target(pic.comet_pix_location,pic.img.data,rad=20)
+                print (pic.comet_pix_location)
             zero=pic.img.get_zero()
             if zero == 0:
                 unscaled=True
                 continue
+            
+
             
             #print(pic.img.image_path)
             #print("Zero: ",zero)
@@ -610,7 +633,8 @@ class study_comet:
             print("WARNING, COMET HAS NO KNOWN ZERO POINT")
         if plot_stack:
             cutout_stack = composite_comet(all_frames)
-            comet_error = lock_comet(cutout_stack)
+            comet_error = lock_comet(cutout_stack,cutoff=self.comet_pixel_max)
+            cutout_stack[cutout_stack > self.comet_pixel_max] = 0
             mark_target(comet_error+((len(cutout_stack[0])-1)/2),cutout_stack)
     
     def plot_surf_brightness(self,min=1,
@@ -645,7 +669,7 @@ class study_comet:
 
 def composite_comet(frames):
     if (isinstance(frames[0],np.ndarray)):
-        #sum=np.sum(frames,axis=0)
+        #avg=np.nansum(frames,axis=0)
         avg=np.median(frames,axis=0)
         return avg
     else:
@@ -654,15 +678,22 @@ def composite_comet(frames):
     
 def lock_comet(og_img,fwhm=6,cutoff=10000,*args,**kwargs):
     img=np.copy(og_img)
-    img[img > cutoff] = 0 
+    img[img > cutoff+np.nanmedian(img)] = 0
+    img=img-np.nanmedian(img) 
+    img[img < 0] = 0
+
     result=fit_gauss(img,fwhm=fwhm).results
     center=(len(img[0])-1)/2
+
     jpl_offset=np.array([result["x_fit"][0],result["y_fit"][0]])
+    #mark_target(jpl_offset,img)
     jpl_offset=jpl_offset-center
     return jpl_offset
 
-def mark_target(pos,image_data):
-    aperture = CircularAperture(pos, r=len(image_data[0])/50)
+def mark_target(pos,image_data,rad=0,*args,**kwargs):
+    if rad==0:
+        rad=len(image_data[0])/50
+    aperture = CircularAperture(pos, r=rad)
     plt.imshow(image_data,origin="lower",cmap="grey",norm=LogNorm())
     aperture.plot(color="red",lw=1.5,alpha=0.5)
     plt.axis("scaled")

@@ -17,7 +17,7 @@ tgt_name="50P"
 search_name="50P"
 eph_code=90000588
 
-filter="R#642"
+filter="V#641"
 
 obs_code=809
 

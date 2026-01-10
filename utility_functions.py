@@ -32,7 +32,19 @@ def clean_unsolved(calib_path):
     for name in file_names:
         os.remove(calib_path/name)
 
+def report_exptime(all_fits_path):
+    lights=ImageFileCollection(all_fits_path,keywords='*',glob_exclude="bias_sub_*")
+    lights.sort(["object","mjd-obs"])
+    all_objects=np.array(lights.summary["exptime"])
+    times,counts=np.unique(all_objects,return_counts=True)
+    return times,counts
+
 #names=report_names(all_fits_path)
 #print(names)
 #clean_unsolved(calib_path)
+
+
+#times,counts=report_exptime(all_fits_path)
+#for time,count in zip(times,counts):
+#    print("EXPTIME: ",time," -> ",count," IMAGES")
 
