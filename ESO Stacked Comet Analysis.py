@@ -12,15 +12,15 @@ root_dir = pathlib.Path(__file__).resolve().parent
 calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
-filter="V#641"
+filter="R#642"
 
-names=["P29","2009AU16","93P","94P","50P","74P","P113","149P"]
-jpl_names=["29P","P/2009 AU16","93P","94P","50P","74P","113P","149P"]
-ephs=[90000394,0,90000917,90000921,90000587,90000821,0,0]
+names=["P29","2009AU16","93P","94P","50P","74P","P113"]
+jpl_names=["29P","P/2009 AU16","93P","94P","50P","74P","113P"]
+ephs=[90000394,0,90000917,90000921,90000587,90000821,0]
 
-#names=["149P"]
-#jpl_names=["149P"]
-#ephs=[0]
+#names=["74P"]
+#jpl_names=["74P"]
+#ephs=[90000821]
 
 for name,jpl_name,eph in zip(names,jpl_names,ephs):
     comet = photo_core.study_comet(name,
@@ -30,18 +30,18 @@ for name,jpl_name,eph in zip(names,jpl_names,ephs):
                                    eph_code=eph,
                                    plot_stack=False,
                                    comet_pixel_max=10000,
-                                   show_frames=True,
+                                   show_frames=False,
                                    cutout_size=200,
                                    man_shift = [0,0])
     if comet.skip_this:
         print("No images :C ")
         continue
-    """
+
     comet.plot_surf_brightness(max=30,
                                logx=False,
                                logy=True,
                                y_relative=False)
-    """
+
     
     """
     print(comet.jpl_name)
@@ -50,7 +50,7 @@ for name,jpl_name,eph in zip(names,jpl_names,ephs):
     print(comet.mags)
     print("-"*10)
     """
-    comet.show_full_stack()
+    #comet.show_full_stack()
     #plt.scatter(comet.t,comet.mags)
     #print(np.median(comet.mags))
     #plt.show()
