@@ -13,18 +13,20 @@ import time
 
 
 root_dir = pathlib.Path(__file__).resolve().parent
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS"/"PROCESSED FRAMES")
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
 
 pix_mask=CT.load_bad_pixel_mask(calib_path)
 
-tgt_names=["P29","P2004F3","94P","93P","74P","2009AU16","P2005R2","29P","50P","P113","48P"]
+tgt_names=["P29","P2004F3","94P","93P","74P","2009AU16","P2005R2","29P","50P","P113","48P","149P"]
 
 filter="R#642"
 cat_filter="rmag"
 
 colour_a="gmag"
 colour_b="rmag"
+
+colour_term = -0.1659028667301966
 
 plot=True
 
@@ -105,18 +107,21 @@ for tgt_name in tgt_names:
             print("NO VALID STARS, SKIPPING")
             print("-"*10)
             continue
-        new_R_r,new_gr,id,grad,filtered_R_r,mag_errors = subject_frame.colour_grad_fit(colour_a,colour_b)
+        #new_R_r,new_gr,id,grad,filtered_R_r,mag_errors = subject_frame.colour_grad_fit(colour_a,colour_b)
+        zero = subject_frame.apply_colour_grad(colour_a,colour_b,colour_term)
         print("CALIBRATION STARS EXTRACTED!")
         print("-"*10)
 
 
-        grads.append(grad)
+        #grads.append(grad)
         calib_frames.append(subject_frame)
+
     
 
 print(len(calib_frames))
 
-term=np.median(grads)
+
+#term=np.median(grads)
 #print(grads)
 #print (colour_a + " - " + colour_b + " Colour Term: ",term)
 
@@ -127,44 +132,27 @@ all_errors=[]
 all_offsets=[]
 
 for frame in calib_frames:
-    offset = frame.colour_zero(term)
+    offset = frame.zero_term
+    plt.scatter(frame.target_table["cat_colour"],(frame.target_table["colour_dif"]+offset))
     all_offsets.append(offset)
     all_colours.extend(frame.target_table["cat_colour"])
     all_difs.extend(frame.target_table["colour_dif"]+offset)
     all_errors.extend(frame.target_table["mag_error"])
 
-    #if plot:
-        #plt.errorbar(frame.target_table["cat_colour"],frame.target_table["colour_dif"]+offset,yerr=frame.target_table["mag_error"],fmt="k.")
 
-    #plt.plot(np.sort(frame.target_table["cat_colour"]),(term*np.sort(frame.target_table["cat_colour"])),label=frame.frame.header["object"])
-    #plt.errorbar(frame.frame_catalogue["rmag"],frame.target_table["mag"]-offset,yerr=frame.target_table["mag_error"],fmt="k.")
 
-plt.hist(grads,bins=50)
-plt.show()
-
-print ("Per-frame Median term:")
-print (colour_a + " - " + colour_b + " Colour Term: ",term)
-
-print("OR")
-
-print ("Per-frame Mean term:")
-print (colour_a + " - " + colour_b + " Colour Term: ",np.mean(grads))
-
-print("OR")
-
-print("Total combined term")
+"""
 fit = fitting.LinearLSQFitter()
 or_fit = fitting.FittingWithOutlierRemoval(fit, sigma_clip, niter=3, sigma=3.0)
 line_init = models.Linear1D()
 fitted_line,mask = or_fit(line_init,np.array(all_colours),np.array(all_difs),weights=1/np.array(all_errors))
 colour_term = (fitted_line(2)-fitted_line(1))
-
-print (colour_a + " - " + colour_b + " Colour Term: ",colour_term)
+"""
 
 if plot:
-    xs=np.linspace(0.3,1.3,100)
-    plt.plot(xs,fitted_line(xs))
-    plt.scatter(all_colours,np.ma.masked_array(all_difs, mask=mask),c="r")
+    xs=np.linspace(0,1.6,100)
+    #plt.plot(xs,fitted_line(xs))
+    #plt.scatter(all_colours,np.ma.masked_array(all_difs, mask=mask),c="r")
     plt.errorbar(all_colours,all_difs,yerr=all_errors,fmt="k.")
     
 

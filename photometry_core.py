@@ -376,11 +376,9 @@ class colour_calib_frame:
 
         self.target_table["SNR"] = self.ap_error(self.target_table["app_sum"],total_bkg,aperture_area)
 
-        
 
         self.invalid_ids.extend(self.target_table[self.target_table["app_sum"] <= 0]["id"].value) #Mark any observation with a negative aperture sum as invalid
 
-        
 
         self.invalid_ids=np.unique(self.invalid_ids) #Remove any duplicate invalid IDs
 
@@ -412,16 +410,33 @@ class colour_calib_frame:
         filtered_data=np.ma.masked_array(self.target_table["Scaled colour_dif"].value,mask=mask)
         self.colour_grad = (fitted_line(2)-fitted_line(1))
         return self.target_table["Scaled colour_dif"].value, self.target_table["cat_colour"].value, self.target_table["id"].value, self.colour_grad,filtered_data,self.target_table["mag_error"]
+    
+    def apply_colour_grad(self,col_a,col_b,colour_term):
+        self.target_table["cat_colour"] = self.frame_catalogue[col_a] - self.frame_catalogue[col_b]
+        self.target_table["colour_dif"] = self.target_table["mag"] - self.frame_catalogue[self.cat_filter]
+        
+        #zero = self.target_table["colour_dif"] - (colour_term * self.target_table["cat_colour"].value)
+
+        #self.target_table["Scaled colour_dif"]=self.target_table["colour_dif"]-np.median(self.target_table["colour_dif"])
+
+        #print(zero)
+
+        zero=self.colour_zero(colour_term)
+
+        return zero
+
 
     def colour_zero(self,gradient):
-        offset = np.mean(gradient * self.target_table["cat_colour"].value - self.target_table["colour_dif"].value)
+        offset = np.median(gradient * self.target_table["cat_colour"].value - self.target_table["colour_dif"].value)
         offset = offset - np.median(self.target_table["cat_colour"]*gradient)
+        #print(offset)
         #offset = np.median(gradient * self.target_table["cat_colour"].value)
         self.zero_term=offset
 
         self.frame.update_zero(offset)
 
         return offset
+    
     
 class comet_frame:
     def __init__(self,_obs_code,_tgt,_img,comet_pixel_max=10000,*args, **kwargs):
@@ -482,6 +497,19 @@ class comet_frame:
         self.apply_correction()
         self.cutout_comet(cutout_size=cutout_size)
     
+    def ap_error(self,app_sum,sky_bkg,app_area):
+        gain=self.img.gain
+        t=self.img.exptime
+        n_pix=app_area 
+        n_star=app_sum*gain
+        n_sky=sky_bkg*gain
+        n_r=self.img.read_noise
+
+        noise=np.sqrt(n_star+n_pix*(n_sky+n_r**2))
+        signal=n_star
+
+        return (signal/noise)
+    
     def comet_ap_phot(self,app_rad,ann_in,ann_out):
 
         position=self.comet_pix_location
@@ -498,6 +526,10 @@ class comet_frame:
         comet_sum = phot_table["aperture_sum"].value[0]
         comet_counts = comet_sum - total_bkg
         comet_mag = -2.5*np.log10(comet_counts/self.img.exptime)
+
+        self.SNR = self.ap_error(comet_sum,total_bkg,aperture_area)
+        self.mag_error = (2.5/np.log(10)) * (1/self.SNR)
+
         #print(comet_counts)
         #print(total_bkg)
         #print(comet_mag)
@@ -513,7 +545,7 @@ class comet_frame:
         plt.annotate(self.name,self.comet_pix_location,color="w")
         plt.show()   
         """
-        return comet_mag
+        return comet_mag,self.SNR,self.mag_error
 
 class study_comet:
     def __init__(self,tgt_name,
@@ -601,8 +633,11 @@ class study_comet:
     def lock_on_phase_2(self,plot_stack=False,show_frames=False,*args,**kwargs):
         all_frames=[]
         mags=[]
+        snrs = []
+        errors = []
         t=[]
         unscaled=False
+        offsets=[]
         for pic in self.comet_pics:
             pic.offset=self.comet_error
             pic.apply_correction()
@@ -614,6 +649,7 @@ class study_comet:
             if show_frames:
                 mark_target(pic.comet_pix_location,pic.img.data,rad=20)
                 print (pic.comet_pix_location)
+            #offsets.append(pic.img.wcs.pixel_to_world_values(([pic.comet_pix_location[0],pic.comet_pix_location[1]])))
             zero=pic.img.get_zero()
             if zero == 0:
                 unscaled=True
@@ -623,14 +659,21 @@ class study_comet:
             
             #print(pic.img.image_path)
             #print("Zero: ",zero)
-            mags.append(pic.comet_ap_phot(5,1.2,1.5)+zero)
+            mag,snr,error = pic.comet_ap_phot(5,1.2,1.5)
+            mags.append(mag+zero)
             t.append(pic.img.header["mjd-obs"])
-
+            snrs.append(snr)
+            errors.append(error)
+        #plt.scatter(np.array(offsets)[:,0],np.array(offsets)[:,1])
+        #plt.show()
         self.mags=mags
+        self.snrs=snrs
+        self.errors=errors
+
         self.t=t
         self.all_frames=all_frames
         if unscaled:
-            print("WARNING, COMET HAS NO KNOWN ZERO POINT")
+            print("WARNING, IMAGES EXCLUDED DUE TO MISSING ZERO POINTS")
         if plot_stack:
             cutout_stack = composite_comet(all_frames)
             comet_error = lock_comet(cutout_stack,cutoff=self.comet_pixel_max)
@@ -717,7 +760,7 @@ def surf_brightness(pos,image_data,min=3,max=20,step_size=1,*args,**kwargs):
 
         
         phot_table = aperture_photometry(image_data,aperture)
-        sums.append(((phot_table["aperture_sum"].value[0])-total_bkg)/aperture_area)
+        sums.append(((phot_table["aperture_sum"].value[0])-total_bkg))
         radii.append(np.sqrt(aperture_area/np.pi))
 
     return sums,radii
