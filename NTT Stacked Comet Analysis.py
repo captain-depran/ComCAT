@@ -36,13 +36,13 @@ for name,jpl_name,eph in zip(names,jpl_names,ephs):
     if comet.skip_this:
         print("No images :C ")
         continue
-      
+    """
     comet.plot_surf_brightness(max=30,
                                logx=False,
                                logy=False,
                                y_relative=False)
     
-    
+    """
     """
     print(comet.jpl_name)
     print(filter)
@@ -53,8 +53,8 @@ for name,jpl_name,eph in zip(names,jpl_names,ephs):
     #comet.show_full_stack()
     #plt.scatter(comet.t,comet.mags)
     #print(np.median(comet.mags))
-    #plt.show()
-
+    plt.errorbar(comet.t,comet.mags,yerr=comet.errors,fmt="k.")
+    plt.show()
 
 #plt.show()
 plt.legend()

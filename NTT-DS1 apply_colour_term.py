@@ -133,7 +133,7 @@ all_offsets=[]
 
 for frame in calib_frames:
     offset = frame.zero_term
-    plt.scatter(frame.target_table["cat_colour"],(frame.target_table["colour_dif"]+offset))
+    plt.scatter(frame.target_table["cat_colour"],(frame.target_table["colour_dif"]+offset),c="black")
     all_offsets.append(offset)
     all_colours.extend(frame.target_table["cat_colour"])
     all_difs.extend(frame.target_table["colour_dif"]+offset)
