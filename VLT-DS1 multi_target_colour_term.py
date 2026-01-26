@@ -13,14 +13,14 @@ import time
 
 
 root_dir = pathlib.Path(__file__).resolve().parent
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_2"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_2"/"block_1"/"ALL_FITS")
 
 pix_mask=CT.load_bad_pixel_mask(calib_path)
 
-tgt_names=["P29","P2004F3","94P","93P","74P","2009AU16","P2005R2","29P","50P","P113","48P","149P"]
-
-filter="R#642"
+#tgt_names=["P29","P2004F3","94P","93P","74P","2009AU16","P2005R2","29P","50P","P113","48P"]
+tgt_names=["93P","130P","132P"]
+filter="R_special"
 cat_filter="rmag"
 
 colour_a="gmag"
@@ -28,8 +28,8 @@ colour_b="rmag"
 
 plot=True
 
-pix_size=0.24  #size of a pixel in arcseconds
-star_cell_size=5 #half width of the cell used for star detection around a PS1 entry
+pix_size=0.25  #size of a pixel in arcseconds
+star_cell_size=10 #half width of the cell used for star detection around a PS1 entry
 
 app_rad = 1.5 #Apperture radius is this multiplied by the average fwhm in the image
 ann_in = 1.5
@@ -53,12 +53,12 @@ for tgt_name in tgt_names:
     if ref_name==9999:
         print("COMET ",tgt_name," NOT FOUND! SKIPPING...")
         continue
-    ref_img=photo_core.ESO_image(calib_path,ref_name)
+    ref_img=photo_core.ESO_image(calib_path,ref_name,pix_limit=65000)
     
 
     #wide field catalogue covering whole target area
     wide_cat=photo_core.field_catalogue(ref_img,
-                                        "10m",
+                                        "30m",
                                         star_cell_size,
                                         pix_size,
                                         cat_filter)
@@ -78,8 +78,9 @@ for tgt_name in tgt_names:
             plot_this=False
         mask.data=np.copy(pixel_mask_data)
         img=photo_core.ESO_image(calib_path,image_name)
+        
         img.update_zero(0)
-        #print(image_name)
+        
         if img.solved==False:
             print("NOT SOLVED, SKIPPING")
             print("-"*10)
@@ -92,7 +93,8 @@ for tgt_name in tgt_names:
                                                     cat_filter)
         
         check = subject_frame.star_fitter(star_cell_size,
-                                fwhm_range=0.3)
+                                fwhm_range=0.3,
+                                fwhm_plot=False)
         if check == 1:
             continue
 
@@ -139,8 +141,8 @@ for frame in calib_frames:
     #plt.plot(np.sort(frame.target_table["cat_colour"]),(term*np.sort(frame.target_table["cat_colour"])),label=frame.frame.header["object"])
     #plt.errorbar(frame.frame_catalogue["rmag"],frame.target_table["mag"]-offset,yerr=frame.target_table["mag_error"],fmt="k.")
 
-plt.hist(grads,bins=50)
-plt.show()
+#plt.hist(grads,bins=50)
+#plt.show()
 
 print ("Per-frame Median term:")
 print (colour_a + " - " + colour_b + " Colour Term: ",term)
@@ -168,6 +170,7 @@ if plot:
     xs=np.linspace(np.min(all_colours),np.max(all_colours),100)
     plt.plot(xs,fitted_line(xs))
     plt.fill_between(xs,((fitted_line.slope-grad_error) * xs)+(fitted_line.intercept-int_error),((fitted_line.slope+grad_error) * xs)+(fitted_line.intercept+int_error),alpha=0.2)
+    plt.fill_between(xs,((fitted_line.slope-grad_error) * xs)+(fitted_line.intercept+int_error),((fitted_line.slope+grad_error) * xs)+(fitted_line.intercept-int_error),alpha=0.2)
     plt.scatter(all_colours,np.ma.masked_array(all_difs, mask=mask),c="r")
     plt.errorbar(all_colours,all_difs,yerr=all_errors,fmt="k.")
     

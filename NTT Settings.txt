@@ -1,0 +1,3 @@
+ASec/Pix = 0.24
+Frame Size = 1024 x 1024
+Trim/edge = 100

@@ -165,7 +165,7 @@ print (colour_a + " - " + colour_b + " Colour Term: ",np.mean(grads))
 print("OR")
 
 print("Total combined term")
-fit = fitting.LinearLSQFitter()
+fit = fitting.LinearLSQFitter(calc_uncertainties=True)
 or_fit = fitting.FittingWithOutlierRemoval(fit, sigma_clip, niter=3, sigma=3.0)
 line_init = models.Linear1D()
 fitted_line,mask = or_fit(line_init,np.array(all_colours),np.array(all_difs),weights=1/np.array(all_errors))
@@ -173,9 +173,14 @@ colour_term = (fitted_line(2)-fitted_line(1))
 
 print (colour_a + " - " + colour_b + " Colour Term: ",colour_term)
 
+grad_error = fitted_line.slope.std
+int_error = fitted_line.intercept.std
+
 if plot:
-    xs=np.linspace(0.3,1.3,100)
+    xs=np.linspace(np.min(all_colours),np.max(all_colours),100)
     plt.plot(xs,fitted_line(xs))
+    plt.fill_between(xs,((fitted_line.slope-grad_error) * xs)+(fitted_line.intercept-int_error),((fitted_line.slope+grad_error) * xs)+(fitted_line.intercept+int_error),alpha=0.2)
+    plt.fill_between(xs,((fitted_line.slope-grad_error) * xs)+(fitted_line.intercept+int_error),((fitted_line.slope+grad_error) * xs)+(fitted_line.intercept-int_error),alpha=0.2)
     plt.scatter(all_colours,np.ma.masked_array(all_difs, mask=mask),c="r")
     plt.errorbar(all_colours,all_difs,yerr=all_errors,fmt="k.")
     

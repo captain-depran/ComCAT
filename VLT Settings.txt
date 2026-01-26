@@ -1,0 +1,5 @@
+ASec/Pix = 0.25
+Frame Size = 2048 x 1034
+Trim (x) = 240 
+Trim (Y) = 100
+notes: 2x2 binning, MIT Low res mode
