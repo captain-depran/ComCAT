@@ -28,6 +28,7 @@ warnings.simplefilter('ignore', category=AstropyWarning)
 warnings.simplefilter('ignore', category=UserWarning)
 
 from astroquery.astrometry_net import conf
+from astroquery.exceptions import TimeoutError
 conf.api_key = 'irjhrsszlsratohk'
 
 root_dir = pathlib.Path(__file__).resolve().parent
@@ -45,15 +46,16 @@ def scale_min_max(a):
     print (np.nanmax(scaled))
     return scaled
 
-def set_trim(image_path,extra_clip,prescan_x_tag,prescan_y_tag,overscan_x_tag,overscan_y_tag):
+def set_trim(image_path,prescan_x_tag,prescan_y_tag,overscan_x_tag,overscan_y_tag,extra_clip=0,xlow=0,xhigh=0,ylow=0,yhigh=0,*args,**kwargs):
     with fits.open(image_path) as img:
-        low_x=img[0].header[prescan_x_tag]+extra_clip
-        high_x=img[0].header[overscan_x_tag]+extra_clip
-        low_y=img[0].header[prescan_y_tag]+extra_clip
-        high_y=img[0].header[overscan_y_tag]+extra_clip
+        low_x=img[0].header[prescan_x_tag]+extra_clip+xlow
+        high_x=img[0].header[overscan_x_tag]+extra_clip+xhigh
+        low_y=img[0].header[prescan_y_tag]+extra_clip+ylow
+        high_y=img[0].header[overscan_y_tag]+extra_clip+yhigh
         x_span=img[0].header["NAXIS1"]
         y_span=img[0].header["NAXIS2"]
-    return (np.s_[low_x:x_span-high_x,low_y:y_span-high_y])
+#
+    return (np.s_[low_y:y_span-high_y,low_x:x_span-high_x])
 
 def create_master_bias(in_path,out_path):
     ifc=ImageFileCollection(in_path,keywords='*',glob_exclude="bias_sub_*")
@@ -110,11 +112,11 @@ def load_bad_pixel_mask(dir):
     else:
         print("NO BAD PIXEL MASK FOUND")
 
-def generate_bad_pixel_mask(all_fits_path,out_path):
+def generate_bad_pixel_mask(all_fits_path,out_path,filter="R#642",*args,**kwargs):
     print("GENERATING BAD PIXEL MASK")
     flats=ImageFileCollection(all_fits_path,keywords='*',glob_include="*bias_sub*")
     flats.sort("exptime")
-    crit={"ESO INS FILT1 NAME".lower():"R#642"}
+    crit={"ESO INS FILT1 NAME".lower():filter}
 
     files=flats.files_filtered(**crit)
     first_img=CCDData.read(all_fits_path/files[0])
@@ -259,8 +261,8 @@ def source_list_plate_solve(img_path,sources,px_scale):
                                             submission_id=submission_id)
                 
             else:
-                print("Monitoring Solve...")
-                plate_wcs = ast.monitor_submission(submission_id, solve_timeout=30)
+                print("SERVICE HANGING - WAITING FOR RESPONSE")
+                plate_wcs = ast.monitor_submission(submission_id,verbose=False, solve_timeout=30)
             
             #time.sleep(10)
         except TimeoutError as e:
@@ -290,9 +292,9 @@ def sextractor(img_path,fwhm,thresh,mask):
 
     table.sort("flux")
     table.reverse()
-    #table=table[:45]
-    
+    table=table[:150]
     """
+    
     #This is here to debug source extraction
     coords_x=np.array(table["xcentroid"])
     coords_y=np.array(table["ycentroid"])
@@ -306,7 +308,7 @@ def sextractor(img_path,fwhm,thresh,mask):
     table['xcentroid'] += 1
     table['ycentroid'] += 1
 
-
+    #exit()
     return table
 
 
@@ -324,6 +326,7 @@ def create_bkg_sub_copy(dir,file,mask):
     bkg_estimator = MedianBackground()
     bkg = Background2D(data, (20, 20), filter_size=(3, 3),
                         sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
+    data
     data_bkgsub=data-bkg.background
     data_bkgsub[data_bkgsub<0]=0
     frame.data=data_bkgsub
@@ -332,7 +335,7 @@ def create_bkg_sub_copy(dir,file,mask):
 
 
 
-def batch_plate_solve(dir,file_list,px_scale,mask,fwhm,thresh):
+def batch_plate_solve(dir,file_list,px_scale,mask,fwhm,thresh,retry_fails=True,*args,**kwargs):
     print ("PLATE SOLVING ",len(file_list)," IMAGES")
     file_n=len(file_list)
     fails=0
@@ -340,10 +343,26 @@ def batch_plate_solve(dir,file_list,px_scale,mask,fwhm,thresh):
     print("-"*10)
     #print("ETC: ",(len(file_list)*10)," SECONDS")
     for file in file_list:
+        tgt_path=pathlib.Path(dir/file)
 
+        with fits.open(tgt_path,mode="update") as img:
+            try:
+                solved=img[0].header.get("plate_solved")
+                if solved == True:
+                    print("PLATE SOLVED ALREADY!")
+                    img.close()
+                    continue
+                elif solved == False and retry_fails == False:
+                    print("PLATE PREVIOUS FAILED - SKIPPING!")
+                    img.close()
+                    continue
+            except:
+                img.close()
+                pass
+            
         create_bkg_sub_copy(dir,file,mask)
 
-        tgt_path=pathlib.Path(dir/file)
+        
         ref_tgt_path=pathlib.Path(dir/str("bkg_sub_"+file))
 
         sources=sextractor(ref_tgt_path,fwhm,thresh,mask)
@@ -364,8 +383,8 @@ def batch_plate_solve(dir,file_list,px_scale,mask,fwhm,thresh):
         print("--- FAILED FILES ---")
         for file in failed_files:
             print(file)
-            os.remove(pathlib.Path(dir/file))
-        print("-> Failed Files Deleted from Output Directory <-")
+            #os.remove(pathlib.Path(dir/file))
+        #print("-> Failed Files Deleted from Output Directory <-")
 
 
 def allign_and_avgstack(images,wcs):

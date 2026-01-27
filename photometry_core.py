@@ -5,6 +5,7 @@ from matplotlib.colors import LogNorm
 import numpy as np
 from tqdm import tqdm
 import pathlib
+import os
 import time
 
 from ccdproc import ImageFileCollection
@@ -75,24 +76,24 @@ def bound_legal(value,shift,hi_limit,lw_limit):
         value=lw_limit
     return int(value)
 
-def local_peak(data,cat_pos,width,edge):
+def local_peak(data,cat_pos,width,top_edge,side_edge):
     """
     Function to take a catalogue position, and find the local peak within a box of 2 x 'width' centered on that position
     """
-    low_x=bound_legal(cat_pos[0],-1*width,edge,0)
-    high_x=bound_legal(cat_pos[0],width,edge,0)
-    low_y=bound_legal(cat_pos[1],-1*width,edge,0)
-    high_y=bound_legal(cat_pos[1],width,edge,0)
+    low_x=bound_legal(cat_pos[0],-1*width,side_edge,0)
+    high_x=bound_legal(cat_pos[0],width,side_edge,0)
+    low_y=bound_legal(cat_pos[1],-1*width,top_edge,0)
+    high_y=bound_legal(cat_pos[1],width,top_edge,0)
     
     if (high_x-low_x)%2 == 0:
         high_x+=1
     if (high_y-low_y)%2 == 0:
         high_y+=1
-    if high_y>edge:
-        high_y=edge
+    if high_y>top_edge:
+        high_y=top_edge
         low_y-=1
-    if high_x>edge:
-        high_x=edge
+    if high_x>side_edge:
+        high_x=side_edge
         low_x-=1
     
 
@@ -103,6 +104,15 @@ def local_peak(data,cat_pos,width,edge):
     result=fit_gauss(clip_data,fix_fwhm=False,xypos=center).results
     star_pos=np.array([result["x_fit"][0],result["y_fit"][0]])
     fwhm_fit=result["fwhm_fit"][0]
+
+    if star_pos[0] < 0 or star_pos[1] < 0 or star_pos[1] > len(clip_data[0]) or star_pos[0] > len(clip_data[0]):
+        star_pos[0]=center[0]
+        star_pos[1]=center[1]
+
+    #plt.plot(clip_data[int(star_pos[0]),:])
+    #plt.plot(clip_data[:,int(star_pos[1])])
+    #plt.show()
+
     return ((star_pos-center)+cat_pos),fwhm_fit
 
 
@@ -120,16 +130,18 @@ def check_job_size(comet_names,filter_names,calib_path):
     return file_count
 
 class ESO_image:
-    def __init__(self,folder,file_name):
+    def __init__(self,folder,file_name,pix_limit=50000,*args,**kwargs):
         self.file_name=file_name
         self.image_path=pathlib.Path(folder/file_name)
-        with fits.open(pathlib.Path(folder/file_name)) as hdu:
+        with fits.open(pathlib.Path(folder/file_name),memmap=False) as hdu:
             self.header=hdu[0].header
             self.data=hdu[0].data
             self.wcs=WCS(hdu[0].header)
+            hdu.close()
         self.read_noise=float(self.header["HIERARCH ESO DET OUT1 RON".lower()])
         self.gain=float(self.header["HIERARCH ESO DET OUT1 CONAD".lower()])
-        self.exptime = self.header["exptime"]
+        self.exptime = self.header["exptime"]#
+        self.pix_limit=pix_limit
         self.solved=True
         try:
             if self.header["plate_solved"]==False:
@@ -138,34 +150,45 @@ class ESO_image:
             detail = exp.args[0]
             print(detail["message"]+" - "+detail["img_name"])
             self.solved=False
+        except:
+            print("ERROR: IMAGE HAS NOT BEEN PLATE SOLVED - " + str(file_name))
+            self.solved=False
+        
         
     def get_zero(self):
         with fits.open(self.image_path,mode="update") as img:
-            self.zero=img[0].header["zero_point"]
+            try:
+                self.zero=img[0].header["zero_point"]
+            except:
+                self.zero=0
+            img.close()
         return self.zero
 
     def update_zero(self,zero_point):
         #print(self.image_path)
-        with fits.open(self.image_path,mode="update") as img:
-                img[0].header.update({"zero_point" : zero_point})
+        with fits.open(self.image_path,mode="update",memmap=False) as img:
+            img[0].header.update({"zero_point" : zero_point})
         
 
 
 class field_catalogue:
     def __init__(self,ref_img,field_width,star_cell_size,pix_size,ref_filter):
         img_wcs=WCS(ref_img.header)
-        mid=int(len(ref_img.data[:,1])/2)
+        midy=int(len(ref_img.data[:,1])/2)
+        midx=int(len(ref_img.data[1,:])/2)
+
         vizier = Vizier(row_limit=-1) # this instantiates Vizier with its default parameters
         Vizier.clear_cache()
         print("Loading Wide Area Catalogue...")
-        catalogue = vizier.query_region(img_wcs.pixel_to_world(mid,mid),
+        catalogue = vizier.query_region(img_wcs.pixel_to_world(midx,midy),
                                     width=field_width,
                                     catalog="J/ApJ/867/105/refcat2",
                                     column_filters={'gmag': '!=','rmag': '!=','imag': '!='})[0]
         catalogue.add_column(np.linspace(0,len(catalogue)-1,num=len(catalogue)),name="ID")
         print(len(catalogue["ID"])," Valid Targets Found...")
+        print("Filtering Targets...")
         self.whole_field,self.excluded_stars=self.catalogue_filter(catalogue,
-                                                                   (3*star_cell_size*pix_size),
+                                                                   (2*star_cell_size*pix_size),
                                                                    ref_filter)
         self.cat_pos=np.transpose((self.whole_field["RA_ICRS"],self.whole_field["DE_ICRS"]))
         print("Done!")
@@ -182,7 +205,7 @@ class field_catalogue:
         catalogue[filter].fill_value = 99
         
 
-        for n,entry in zip(range(0,len(catalogue["ID"].value)),catalogue.iterrows("RA_ICRS","DE_ICRS",filter,"ID")):
+        for n,entry in tqdm(zip(range(0,len(catalogue["ID"].value)),catalogue.iterrows("RA_ICRS","DE_ICRS",filter,"ID"))):
             compare_cat=catalogue.copy()
             catalogue[filter].fill_value = 99
             compare_cat.keep_columns(["RA_ICRS","DE_ICRS",filter,"ID"])
@@ -214,14 +237,15 @@ class field_catalogue:
         catalogue=catalogue[np.isin(catalogue["ID"],removed_ids,invert=True)]
         return catalogue,exclude_cat
     
-    def catalogue_pos_parse(self,wcs,field_span,edge_pad):
+    def catalogue_pos_parse(self,wcs,field_height,field_width,edge_pad):
         ids=[]
-        field_span-=edge_pad
+        field_width-=edge_pad
+        field_height-=edge_pad
 
         big_cat_pix=np.transpose(wcs.world_to_pixel(coords.SkyCoord(ra=self.cat_pos[:,0],dec=self.cat_pos[:,1],unit="deg",frame="fk5")))
         cat_pix=[]
         for id,n in zip(self.whole_field["ID"].value,range(0,len(big_cat_pix))):
-            if big_cat_pix[n,0] < edge_pad or big_cat_pix[n,0] > field_span or big_cat_pix[n,1] < edge_pad or big_cat_pix[n,1] > field_span:
+            if big_cat_pix[n,0] < edge_pad or big_cat_pix[n,0] > field_width or big_cat_pix[n,1] < edge_pad or big_cat_pix[n,1] > field_height:
                 pass
             else:
                 cat_pix.append(big_cat_pix[n,:])
@@ -229,7 +253,7 @@ class field_catalogue:
         return np.array(cat_pix),np.array(ids)
 
     def field_section(self,img,edge_pad):
-        cat_in_frame_pix,cat_in_frame_ids=self.catalogue_pos_parse(WCS(img.header),len(img.data[:,1]),edge_pad)
+        cat_in_frame_pix,cat_in_frame_ids=self.catalogue_pos_parse(WCS(img.header),len(img.data[:,1]),len(img.data[1,:]),edge_pad)
         catalogue_section=self.whole_field[np.isin(self.whole_field["ID"],cat_in_frame_ids)]
         return cat_in_frame_pix,cat_in_frame_ids,catalogue_section
 
@@ -242,7 +266,8 @@ class colour_calib_frame:
         self.cat_filter=cat_filter
         self.cat_pix,self.cat_ids,self.frame_catalogue=field_catalogue.field_section(img,edge_pad)
         self.frame=img  #An instance of the ESO_image object, or different observatory configured image
-        self.field_span=len(self.frame.data[:,0])
+        self.field_height=len(self.frame.data[:,0])
+        self.field_width=len(self.frame.data[0,:])
         self.estimate_bkg()
         self.colour_median=colour_median
         self.invalid_ids=[]
@@ -266,13 +291,15 @@ class colour_calib_frame:
         positions=[]
         fwhm=[]
         if len(self.cat_pix)==0:
+            print("EMPTY CATALOGUE")
             return 1
         else:
             for coord in self.cat_pix:
                 star_pos,fwhm_fit=local_peak(self.data_bkgsub,
                                             coord,
                                             star_cell_size,
-                                            self.field_span)
+                                            self.field_height,
+                                            self.field_width)
                 positions.append(star_pos)
                 fwhm.append(fwhm_fit)
             positions=np.array(positions)
@@ -289,12 +316,13 @@ class colour_calib_frame:
                 plt.show()
             
             self.avg_fwhm=np.median(fwhm)
+            print(fwhm)
             self.invalid_ids.extend(self.target_table[np.abs(self.target_table["fwhm"].value-self.avg_fwhm) > fwhm_range ]["id"].value)
             return 0
 
-    def remove_bad_aps(self,apertures):
+    def remove_bad_aps(self,apertures,limit,*args,**kwargs):
         app_stats=ApertureStats(self.frame.data,apertures,error=self.pix_err,mask=self.mask.data)
-        self.invalid_ids.extend(self.target_table[np.where(app_stats.max > 50000)]["id"].value)  #Discount any aperture that features a near-saturation pixel
+        self.invalid_ids.extend(self.target_table[np.where(app_stats.max > limit)]["id"].value)  #Discount any aperture that features a near-saturation pixel
 
     def ap_error(self,app_sum,sky_bkg,app_area):
         gain=self.frame.gain
@@ -324,7 +352,7 @@ class colour_calib_frame:
         bkg_annulus = CircularAnnulus(positions, r_in = app_rad * ann_in, r_out = app_rad * ann_out)
         #print("Total Apertures: ",len(apertures))
 
-        self.remove_bad_aps(apertures)
+        self.remove_bad_aps(apertures,self.frame.pix_limit)
 
         #print("Discounted Targets: ",len(self.invalid_ids))
         no_app_mask=self.mask.data
@@ -336,6 +364,7 @@ class colour_calib_frame:
             if np.sum(app_mask) is None:
                 continue
             self.mask.data = np.ma.mask_or(self.mask.data,app_mask)
+        
 
         """
         Below is 'emergency' plotting of each frame and its apertures
@@ -344,8 +373,8 @@ class colour_calib_frame:
             plt.imshow(self.frame.data, cmap='grey', origin='lower', norm=LogNorm())
             apertures.plot(color='blue', lw=1.5, alpha=0.5)
             bkg_annulus.plot(color='blue', lw=1.5, alpha=0.5)
-            plt.xlim(0,824)
-            plt.ylim(0,824)
+            plt.xlim(0,self.field_width)
+            plt.ylim(0,self.field_height)
             for x,y,id in zip(self.target_table["pix_x"].value,self.target_table["pix_y"].value,self.target_table["id"].value):
                 plt.annotate(str(id),[x,y],color="w")
             plt.show()
@@ -354,8 +383,8 @@ class colour_calib_frame:
             plt.imshow(self.frame.data, cmap='grey', origin='lower', norm=LogNorm())
             apertures.plot(color='blue', lw=1.5, alpha=0.5)
             bkg_annulus.plot(color='blue', lw=1.5, alpha=0.5)
-            plt.xlim(0,824)
-            plt.ylim(0,824)
+            plt.xlim(0,self.field_width)
+            plt.ylim(0,self.field_height)
             for x,y,id in zip(self.target_table["pix_x"].value,self.target_table["pix_y"].value,self.target_table["id"].value):
                 plt.annotate(str(id),[x,y],color="w")
             plt.show()
@@ -376,11 +405,14 @@ class colour_calib_frame:
 
         self.target_table["SNR"] = self.ap_error(self.target_table["app_sum"],total_bkg,aperture_area)
 
-
         self.invalid_ids.extend(self.target_table[self.target_table["app_sum"] <= 0]["id"].value) #Mark any observation with a negative aperture sum as invalid
+        self.invalid_ids.extend(self.target_table[self.target_table["SNR"] <= 0]["id"].value) #Mark any observation with a negative SNR as invalid
+        self.invalid_ids.extend(self.target_table[np.isnan(self.target_table["SNR"])]["id"].value) #Mark any observation with a NAN SNR as invalid
 
 
         self.invalid_ids=np.unique(self.invalid_ids) #Remove any duplicate invalid IDs
+
+        
 
         self.target_table=self.target_table[np.isin(self.target_table["id"],self.invalid_ids,invert=True)] #Filter the invalids IDs from the observation list
 
@@ -403,8 +435,7 @@ class colour_calib_frame:
         fit = fitting.LinearLSQFitter()
         or_fit = fitting.FittingWithOutlierRemoval(fit, sigma_clip, niter=3, sigma=3.0)
         line_init = models.Linear1D()
-
-        
+      
 
         fitted_line,mask = or_fit(line_init,self.target_table["cat_colour"].value,self.target_table["Scaled colour_dif"].value,weights=1/self.target_table["mag_error"])
         filtered_data=np.ma.masked_array(self.target_table["Scaled colour_dif"].value,mask=mask)
@@ -649,9 +680,11 @@ class study_comet:
             if show_frames:
                 mark_target(pic.comet_pix_location,pic.img.data,rad=20)
                 print (pic.comet_pix_location)
-            #offsets.append(pic.img.wcs.pixel_to_world_values(([pic.comet_pix_location[0],pic.comet_pix_location[1]])))
+            t.append(pic.img.header["mjd-obs"])
             zero=pic.img.get_zero()
             if zero == 0:
+                mags.append(np.nan)
+                errors.append(np.nan)
                 unscaled=True
                 continue
             
@@ -659,13 +692,10 @@ class study_comet:
             
             #print(pic.img.image_path)
             #print("Zero: ",zero)
-            mag,snr,error = pic.comet_ap_phot(5,1.2,1.5)
+            mag,snr,error = pic.comet_ap_phot(7,1.2,1.5)
             mags.append(mag+zero)
-            t.append(pic.img.header["mjd-obs"])
             snrs.append(snr)
             errors.append(error)
-        #plt.scatter(np.array(offsets)[:,0],np.array(offsets)[:,1])
-        #plt.show()
         self.mags=mags
         self.snrs=snrs
         self.errors=errors
@@ -691,7 +721,8 @@ class study_comet:
                            step_size=1,
                            min=min,
                            max=max)
-        radii=np.array(radii) * 0.24
+        radii=np.array(radii)
+        #radii=radii * 0.25
         if logx:
             radii = np.log(radii)
 
@@ -706,6 +737,38 @@ class study_comet:
     
     def show_full_stack(self):
         mark_target(self.comet_error+((len(self.cutout_stack[0])-1)/2),self.cutout_stack)
+
+    def analyse_path(self):
+        jpl_coord_list=[]
+        pix_coord_list=[]
+        for pic in self.comet_pics:
+            pix_coord = pic.img.wcs.pixel_to_world(pic.comet_pix_location[0],pic.comet_pix_location[1])
+            jpl_coord = coords.SkyCoord(ra=pic.tgt_RA,dec=pic.tgt_DEC,unit="deg",frame="fk5")
+
+            pix_coord_list.append([pix_coord.ra.to(u.arcsec).value,pix_coord.dec.to(u.arcsec).value])
+            jpl_coord_list.append(np.array([jpl_coord.ra.to(u.arcsec).value,jpl_coord.dec.to(u.arcsec).value]).flatten())
+            
+            dra,ddec = jpl_coord.spherical_offsets_to(pix_coord)
+            print((dra.to(u.arcsec)).value / 0.25 , " , ", ddec.to(u.arcsec).value / 0.25)
+            print("-"*10)
+
+        pix_coord_list=np.array(pix_coord_list)
+        jpl_coord_list=np.array(jpl_coord_list)
+
+        #print((pix_coord_list[:,0]-jpl_coord_list[:,0])/0.25)
+        #print((pix_coord_list[:,1]-jpl_coord_list[:,1])/0.25)
+
+        print(np.median(pix_coord_list[:,0]-jpl_coord_list[:,0])/0.25)
+        print(np.median(pix_coord_list[:,1]-jpl_coord_list[:,1])/0.25)
+
+        plt.plot(self.t,pix_coord_list[:,0]-jpl_coord_list[0,0],".-",label="Locked On Track")
+        plt.plot(self.t,jpl_coord_list[:,0]-jpl_coord_list[0,0],".-",label="JPL Position Track")
+        plt.legend()
+        plt.show()
+
+        
+
+
 
 
 
@@ -760,7 +823,7 @@ def surf_brightness(pos,image_data,min=3,max=20,step_size=1,*args,**kwargs):
 
         
         phot_table = aperture_photometry(image_data,aperture)
-        sums.append(((phot_table["aperture_sum"].value[0])-total_bkg))
+        sums.append(((phot_table["aperture_sum"].value[0])-total_bkg)/aperture_area)
         radii.append(np.sqrt(aperture_area/np.pi))
 
     return sums,radii

@@ -19,7 +19,8 @@ all_fits_path = pathlib.Path(root_dir/"Data_set_2"/"block_1"/"ALL_FITS")
 pix_mask=CT.load_bad_pixel_mask(calib_path)
 
 #tgt_names=["P29","P2004F3","94P","93P","74P","2009AU16","P2005R2","29P","50P","P113","48P"]
-tgt_names=["93P","130P","132P"]
+#tgt_names=["93P","130P","132P","149P","P2005JD108","P2004F3","56P","37P","173P","168P","159P","P2005JQ5","P2005K3"]
+tgt_names=["130P"]
 filter="R_special"
 cat_filter="rmag"
 
@@ -29,7 +30,7 @@ colour_b="rmag"
 plot=True
 
 pix_size=0.25  #size of a pixel in arcseconds
-star_cell_size=10 #half width of the cell used for star detection around a PS1 entry
+star_cell_size=5 #half width of the cell used for star detection around a PS1 entry
 
 app_rad = 1.5 #Apperture radius is this multiplied by the average fwhm in the image
 ann_in = 1.5
@@ -37,7 +38,7 @@ ann_out = 2
 
 edge_pad=20 #introduces padding at the edge 
 
-process_time=2 #average number of seconds for system to process a file. Used for job time estimation
+process_time=4 #average number of seconds for system to process a file. Used for job time estimation
 
 file_count=photo_core.check_job_size(tgt_names,[filter],calib_path)
 print("Estimated Runtime: ",file_count*process_time," Seconds | ",file_count," Comet Images")
@@ -53,7 +54,7 @@ for tgt_name in tgt_names:
     if ref_name==9999:
         print("COMET ",tgt_name," NOT FOUND! SKIPPING...")
         continue
-    ref_img=photo_core.ESO_image(calib_path,ref_name,pix_limit=65000)
+    ref_img=photo_core.ESO_image(calib_path,ref_name,pix_limit=69000)
     
 
     #wide field catalogue covering whole target area
@@ -72,12 +73,12 @@ for tgt_name in tgt_names:
     count=0
     for image_name in all_image_names:
         if first:
-            plot_this=False
+            plot_this=True
             first=False
         else:
-            plot_this=False
+            plot_this=True
         mask.data=np.copy(pixel_mask_data)
-        img=photo_core.ESO_image(calib_path,image_name)
+        img=photo_core.ESO_image(calib_path,image_name,pix_limit=69000)
         
         img.update_zero(0)
         
@@ -93,7 +94,7 @@ for tgt_name in tgt_names:
                                                     cat_filter)
         
         check = subject_frame.star_fitter(star_cell_size,
-                                fwhm_range=0.3,
+                                fwhm_range=1,
                                 fwhm_plot=False)
         if check == 1:
             continue
@@ -161,7 +162,7 @@ line_init = models.Linear1D()
 fitted_line,mask = or_fit(line_init,np.array(all_colours),np.array(all_difs),weights=1/np.array(all_errors))
 colour_term = (fitted_line(2)-fitted_line(1))
 
-print (colour_a + " - " + colour_b + " Colour Term: ",colour_term)
+print (colour_a + " - " + colour_b + " Colour Term: ",colour_term, " +- ",fitted_line.slope.std)
 
 grad_error = fitted_line.slope.std
 int_error = fitted_line.intercept.std
@@ -170,7 +171,7 @@ if plot:
     xs=np.linspace(np.min(all_colours),np.max(all_colours),100)
     plt.plot(xs,fitted_line(xs))
     plt.fill_between(xs,((fitted_line.slope-grad_error) * xs)+(fitted_line.intercept-int_error),((fitted_line.slope+grad_error) * xs)+(fitted_line.intercept+int_error),alpha=0.2)
-    plt.fill_between(xs,((fitted_line.slope-grad_error) * xs)+(fitted_line.intercept+int_error),((fitted_line.slope+grad_error) * xs)+(fitted_line.intercept-int_error),alpha=0.2)
+    #plt.fill_between(xs,((fitted_line.slope-grad_error) * xs)+(fitted_line.intercept+int_error),((fitted_line.slope+grad_error) * xs)+(fitted_line.intercept-int_error),alpha=0.2)
     plt.scatter(all_colours,np.ma.masked_array(all_difs, mask=mask),c="r")
     plt.errorbar(all_colours,all_difs,yerr=all_errors,fmt="k.")
     

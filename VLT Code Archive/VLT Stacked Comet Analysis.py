@@ -18,24 +18,26 @@ filter="R_SPECIAL"
 #jpl_names=["29P","P/2009 AU16","93P","94P","50P","74P","113P"]
 #ephs=[90000394,0,90000917,90000921,90000587,90000821,0]
 
-names=["93P"]
-jpl_names=["93P"]
-ephs=[90000917]
+names=["168P"]
+jpl_names=["168P"]
+ephs=[0]
 
 for name,jpl_name,eph in zip(names,jpl_names,ephs):
     comet = photo_core.study_comet(name,
                                    jpl_name,
                                    filter,
                                    calib_path,
+                                   obs_code=309,
                                    eph_code=eph,
-                                   plot_stack=True,
-                                   comet_pixel_max=15000,
+                                   plot_stack=False,
+                                   comet_pixel_max=35000,
                                    show_frames=False,
-                                   cutout_size=50,
+                                   cutout_size=20,
                                    man_shift = [0,0])
     if comet.skip_this:
         print("No images :C ")
         continue
+    comet.analyse_path()
     """
     comet.plot_surf_brightness(max=30,
                                logx=False,

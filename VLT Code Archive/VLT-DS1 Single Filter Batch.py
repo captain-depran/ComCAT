@@ -41,7 +41,8 @@ excluded_tgts.extend(["130P",
                "132P",
                "138P",
                "139P",
-               "149P"])
+               "149P",
+               "152P"])
 
 #include_tgts=["P2004F3","2009AU16","29P","50P","74P","93P","94P","P113","P2005R2","48P","P29"]
 #include_tgts=["93P","94P","P113"]
@@ -52,7 +53,8 @@ job = ComCAT.plate_solve_existing(calib_path,
                                   filter,
                                   sext_fwhm=4,
                                   sext_thresh=8,
-                                  exclude_tgts = excluded_tgts)
+                                  exclude_tgts = excluded_tgts,
+                                  retry_fails=False)
 job.run()
 
 """

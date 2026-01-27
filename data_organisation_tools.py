@@ -66,7 +66,7 @@ def move_file(file,root,folder_name):
     shutil.move(file,to_dir)
 
 
-def sort_block(block,block_n):
+def sort_block(block,block_n,data_set_label):
     """
     Takes a observational data block and copies it a unique folder
 
@@ -75,7 +75,7 @@ def sort_block(block,block_n):
     - block_n : the numerical identifier for the block within the whole dataset
     """
     for file in block:
-        copy_files(file,pathlib.Path(root_dir/"Data_set_1"),"block_"+str(block_n))
+        copy_files(file,pathlib.Path(root_dir/data_set_label),"block_"+str(block_n))
 
 def extract_name(path):
     """
@@ -85,7 +85,7 @@ def extract_name(path):
         object=(img[0].header['object'])
     return object
 
-def dataset_split(full_set,threshold):
+def dataset_split(full_set,threshold,data_set_label):
     """
     Splits a given dump of data into individual observation blocks, based on the time between observations being more than the passed threshold. 
     The result is N number of folders (where N is the number of blocks detected) in the original Data_set parent folder
@@ -119,7 +119,7 @@ def dataset_split(full_set,threshold):
 
     for block,block_n in zip(all_sets,range(0,len(all_sets))):
         block_n+=1
-        sort_block(block,block_n)
+        sort_block(block,block_n,data_set_label)
         sorted_total+=len(block)
 
     if np.abs(total_unsorted-sorted_total)!=0:
@@ -139,7 +139,10 @@ def filter_sort(folder_path):
     all_files=list_files(folder_path)
     for file in all_files:
         with fits.open(file) as img:
-            filter=(img[0].header['HIERARCH ESO INS FILT1 NAME'])
+            if img[0].header['object'] == "BIAS":
+                filter="FREE"
+            else:
+                filter=(img[0].header['HIERARCH ESO INS FILT1 NAME'])
         move_file(file,folder_path,filter)
     
     
@@ -257,7 +260,7 @@ def create_np_frames(data_path):
                         create_master(bias)
 
 
-def organise_files(unsorted_dir):
+def organise_files(unsorted_dir,data_set_label):
     """
     Organisation of a data dump of .fits files. Will sort as follows:
         1) Split into observational blocks/nights
@@ -269,11 +272,12 @@ def organise_files(unsorted_dir):
     """
     data_set_dir=unsorted_dir.parent
     file_list=list_files(unsorted_dir)
-    dataset_split(file_list,4)
+    dataset_split(file_list,14,data_set_label)
     filter_object_sort(data_set_dir)
 
 root_dir = pathlib.Path(__file__).resolve().parent
-#dir=pathlib.Path(root_dir/"Data_set_1"/"unpacked_data")
+#dir=pathlib.Path(root_dir/"Data_set_2"/"unpacked_data")
+#organise_files(dir,"Data_set_2")
 
 
 
