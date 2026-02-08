@@ -9,21 +9,21 @@ import pathlib
 import time
 
 root_dir = pathlib.Path(__file__).resolve().parent
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS")
 
 filter_1="V#641"
 filter_2="R#642"
 
 
-names=["93P"]
-jpl_names=["93P"]
-ephs=[90000917]
+names=["29P"]
+jpl_names=["29P"]
+ephs=[90000394]
 
 sol_col=0.45
 
-colour_term_1 = -0.5555139559009306
-colour_term_2 = -0.1659028667301966
+colour_term_1 = -0.5409201604183946
+colour_term_2 = -0.1787952655659952
 #shift_col= 0.45 #Solar colour, starting point
 #shift_col= 0.4085325  
 
@@ -35,13 +35,15 @@ def get_obs_mag(filter,name,jpl_name,eph):
                                    calib_path,
                                    eph_code=eph,
                                    plot_stack=False,
-                                   comet_pixel_max=5000,
+                                   comet_pixel_max=10000,
                                    show_frames=False,
-                                   cutout_size=200,
-                                   man_shift = [0,0])
-    
+                                   cutout_size=50,
+                                   pos_offset = [-1,-3])
+    #comet.analyse_path()
+    comet.get_measures()
     m_obs=np.nanmedian(comet.mags)
     #plt.scatter(comet.t,comet.mags)
+    print(comet.mags)
     plt.errorbar(comet.t,comet.mags,yerr=comet.errors,fmt="k.")
     plt.show()
 
