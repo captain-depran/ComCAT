@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 root_dir = pathlib.Path(__file__).resolve().parent
-all_fits_path = pathlib.Path(root_dir/"Data_set_2"/"block_1"/"ALL_FITS")
+#all_fits_path = pathlib.Path(root_dir/"Data_set_3"/"block_1"/"ALL_FITS")
 #calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
 
 def report_names(all_fits_path):

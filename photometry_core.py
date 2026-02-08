@@ -25,10 +25,12 @@ import astropy.coordinates as coords
 from astropy.stats import sigma_clipped_stats, SigmaClip,sigma_clip
 from astropy.modeling import fitting,models
 from astropy.time import Time
+from photutils.detection import DAOStarFinder
 
 from astroquery.vizier import Vizier
 from astroquery.jplhorizons import Horizons
 
+rng = np.random.default_rng()
 
 
 class Not_plate_solved(Exception):
@@ -53,10 +55,15 @@ def get_image_files(calib_path,tgt,filter):
     science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt+"_"+filter+"*")
     #science.sort("mjd-obs")
     science_files=science.files_filtered(**criteria)
+    if len(science_files) == 0:
+        criteria={'object' : tgt, "ESO INS FILT2 NAME".lower():filter}
+        science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt+"_"+filter+"*")
+        #science.sort("mjd-obs")
+        science_files=science.files_filtered(**criteria)
     return science_files
 
 def get_image_file(calib_path,tgt,filter):
-    criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
+    criteria={'object' : tgt, "ESO INS FILT2 NAME".lower():filter}
     science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt+"_"+filter+"*")
     science_files=science.files_filtered(**criteria)
     if len(science_files)==0:
@@ -76,7 +83,7 @@ def bound_legal(value,shift,hi_limit,lw_limit):
         value=lw_limit
     return int(value)
 
-def local_peak(data,cat_pos,width,top_edge,side_edge):
+def local_peak(data,cat_pos,width,top_edge,side_edge,bkg_remove=False,*args,**kwargs):
     """
     Function to take a catalogue position, and find the local peak within a box of 2 x 'width' centered on that position
     """
@@ -100,6 +107,10 @@ def local_peak(data,cat_pos,width,top_edge,side_edge):
     center=[(high_x-low_x)/2,(high_y-low_y)/2]
 
     clip_data=data[low_y:high_y,low_x:high_x]
+
+    if bkg_remove:
+        mean, median, std = sig(clip_data, sigma=3.0)
+        clip_data = clip_data - median
 
     result=fit_gauss(clip_data,fix_fwhm=False,xypos=center).results
     star_pos=np.array([result["x_fit"][0],result["y_fit"][0]])
@@ -140,7 +151,7 @@ class ESO_image:
             hdu.close()
         self.read_noise=float(self.header["HIERARCH ESO DET OUT1 RON".lower()])
         self.gain=float(self.header["HIERARCH ESO DET OUT1 CONAD".lower()])
-        self.exptime = self.header["exptime"]#
+        self.exptime = self.header["exptime"]
         self.pix_limit=pix_limit
         self.solved=True
         try:
@@ -161,6 +172,7 @@ class ESO_image:
                 self.zero=img[0].header["zero_point"]
             except:
                 self.zero=0
+                print("NO ZERO")
             img.close()
         return self.zero
 
@@ -316,7 +328,6 @@ class colour_calib_frame:
                 plt.show()
             
             self.avg_fwhm=np.median(fwhm)
-            print(fwhm)
             self.invalid_ids.extend(self.target_table[np.abs(self.target_table["fwhm"].value-self.avg_fwhm) > fwhm_range ]["id"].value)
             return 0
 
@@ -487,11 +498,14 @@ class comet_frame:
         else:
             jpl_obj=Horizons(id=self.name,id_type="smallbody",location=self.obs_code,epochs=self.date)
         comet_eph=jpl_obj.ephemerides()
-        self.tgt_RA=comet_eph["RA"]
-        self.tgt_DEC=comet_eph["DEC"]
+        self.tgt_RA = comet_eph["RA"]
+        self.tgt_DEC = comet_eph["DEC"]
+        self.RA_unc = comet_eph["RA_3sigma"]
+        self.DEC_unc = comet_eph["DEC_3sigma"]
         self.comet_pix_location=self.img.wcs.world_to_pixel(coords.SkyCoord(ra=self.tgt_RA,dec=self.tgt_DEC,unit="deg",frame="fk5"))
         self.comet_pix_location=np.array(self.comet_pix_location).flatten()
-        if self.comet_pix_location[0] < 0 or self.comet_pix_location[1] < 0 or self.comet_pix_location[0] > len(self.img.data[0]) or self.comet_pix_location[1] > len(self.img.data[0]):
+        self.orig_comet_pix_location = np.copy(self.comet_pix_location)
+        if self.comet_pix_location[0] < 0 or self.comet_pix_location[1] < 0 or self.comet_pix_location[0] > len(self.img.data[0,:]) or self.comet_pix_location[1] > len(self.img.data[:,0]):
             return False
         else:
             return True 
@@ -501,8 +515,8 @@ class comet_frame:
         aperture = CircularAperture(self.comet_pix_location, r=10)        
         plt.imshow(self.img.data, cmap='grey', origin='lower',norm=LogNorm())
         aperture.plot(color='red', lw=1.5, alpha=0.5)
-        plt.xlim(0,824)
-        plt.ylim(0,824)
+        #plt.xlim(0,824)
+        #plt.ylim(0,824)
         plt.annotate(self.name,self.comet_pix_location,color="w")
         plt.show()
 
@@ -517,8 +531,10 @@ class comet_frame:
         y_high=int(center[1]+self.pad)+manual_shift[1]
         self.cutout=self.img.data[y_low:y_high+1,x_low:x_high+1]
 
+        self.cutout_transform = np.array([x_low,y_low])
+
     def apply_correction(self):
-        self.jpl_location=self.comet_pix_location
+        self.jpl_location=np.copy(self.comet_pix_location)
         self.comet_pix_location=self.comet_pix_location+self.offset
         #print("BEFORE: ",self.jpl_location," | AFTER: ",self.comet_pix_location)
 
@@ -541,9 +557,9 @@ class comet_frame:
 
         return (signal/noise)
     
-    def comet_ap_phot(self,app_rad,ann_in,ann_out):
+    def comet_ap_phot(self,app_rad,ann_in,ann_out,shift=[0,0],*args,**kwargs):
 
-        position=self.comet_pix_location
+        position=self.comet_pix_location+shift
         aperture = CircularAperture(position, r=app_rad)
         bkg_annulus = CircularAnnulus(position, r_in = app_rad * ann_in, r_out = app_rad * ann_out)
 
@@ -556,6 +572,8 @@ class comet_frame:
         total_bkg=bkg_mean*aperture_area
         comet_sum = phot_table["aperture_sum"].value[0]
         comet_counts = comet_sum - total_bkg
+        if comet_counts <= 0:
+            comet_counts = 1
         comet_mag = -2.5*np.log10(comet_counts/self.img.exptime)
 
         self.SNR = self.ap_error(comet_sum,total_bkg,aperture_area)
@@ -589,7 +607,7 @@ class study_comet:
                  comet_pixel_max=10000,
                  cutout_size=100,
                  show_frames=False,
-                 man_shift=[0,0],
+                 pos_offset=[0,0],
                  *args, **kwargs):
         
         self.tgt_name=tgt_name
@@ -598,118 +616,154 @@ class study_comet:
         self.calib_path = calib_path
         self.obs_code = obs_code
         self.eph_code = eph_code
-        self.man_shift=man_shift
-        self.all_frames = []
+        self.pos_offset = pos_offset
         self.comet_pics = []
+        self.cutouts = []
+        self.t=[]
+        self.zeros=[]
+        self.mags=[]
+        self.snrs=[]
+        self.errors=[]
         self.comet_pixel_max=comet_pixel_max
         self.cutout_size=cutout_size
         self.skip_this=False
+        self.show_frames=show_frames
 
         all_image_names = self.load_files()
         if all_image_names is None:
             self.skip_this=True
             return None
         
-        self.lock_on_phase_1(all_image_names)
-        self.lock_on_phase_2(plot_stack=plot_stack,show_frames=show_frames)
+        for image in all_image_names:
+            valid = self.init_frame(image)
+        
 
         print("Images used: ",len(self.t))
         self.t=np.array(self.t)
         if len(self.t !=0):
             self.t=(self.t-self.t[0])*24*60
 
-        self.cutout_stack = composite_comet(self.all_frames)
-        self.comet_error = lock_comet(self.cutout_stack,cutoff=comet_pixel_max)
+        self.cutout_stack = composite_comet(self.cutouts)
+        if plot_stack:
+            self.show_full_stack()
 
+    def get_measures(self,app_rad = 4, app_in = 1.5, app_out = 2,shift = [0,0],*args,**kwargs):
+        self.mags=[]
+        self.snrs=[]
+        self.errors=[]    
+        for frame,zero in zip(self.comet_pics,self.zeros):
+            mag,snr,mag_err = frame.comet_ap_phot(app_rad,app_in,app_out,shift=shift)
+            self.mags.append(mag+zero)
+            self.snrs.append(snr)
+            self.errors.append(mag_err)
+
+    def init_frame(self,image_name):
+        img=ESO_image(self.calib_path,image_name)
+        if img.solved==False:
+            print("ERROR! NOT SOLVED!")
+            return 0
+        comet_pic=comet_frame(self.obs_code,self.jpl_name,img,comet_pixel_max=5000)
+
+        good_find = comet_pic.find_comet(eph_code=self.eph_code)
+        
+        if good_find == False:
+            print("NO FIND")
+            return 0
+
+        comet_pic.offset=self.pos_offset
+        comet_pic.apply_correction()
+
+
+        comet_pic.cutout_comet(cutout_size=50)
+        
+        self.comet_pics.append(comet_pic)
+        self.cutouts.append(comet_pic.cutout)
+
+        self.zeros.append(comet_pic.img.get_zero())
+        self.t.append(comet_pic.date)
+        if self.show_frames:
+            comet_pic.show_comet()
 
     def load_files(self):
         all_image_names=get_image_files(self.calib_path,self.tgt_name,self.filter)
         print("Images of Comet "+self.tgt_name+": ",len(all_image_names))
         if len(all_image_names)==0:
+            print("ERROR: NO FILES")
             return None
 
         return all_image_names
+            
+    def find_offset(self,search_span = 30, strike_lim = 3, samples = 3000):
+        x_offsets = rng.integers(np.ones(samples)*-1*search_span,np.ones(samples)*search_span)
+        y_offsets = rng.integers(np.ones(samples)*-1*search_span,np.ones(samples)*search_span)
 
-    def lock_on_phase_1(self,image_names):
-        first = True
-        for image_name in tqdm(image_names):
-            img=ESO_image(self.calib_path,image_name)
-            if img.solved==False:
-                print("ERROR! NOT SOLVED!")
-                continue
-            comet_pic=comet_frame(self.obs_code,self.jpl_name,img,comet_pixel_max=self.comet_pixel_max)
-            good_find = comet_pic.find_comet(eph_code=self.eph_code)
-            comet_pic.comet_pix_location+=self.man_shift
-            if good_find == False:
-                continue
-            comet_pic.cutout_comet(cutout_size=self.cutout_size)
+        snr_stddev = []
+        mags_stddev = []
+        all_mags = []
 
-            if first:
-                first=False
-                pass
-            elif np.shape(comet_pic.cutout) != last_shape:
+        dxs=[]
+        dys=[]
+        rank=[]
+
+        unmodded_pics = self.comet_pics.copy()
+
+        for dx,dy in tqdm(zip(x_offsets,y_offsets)):
+            shift = [dx,dy]
+            strikes = 0
+            snrs=[]
+            mags=[]
+            for i in (range(0,len(self.zeros))):
+                mag,snr,mag_error = unmodded_pics[i].comet_ap_phot(3,1.1,1.5,shift=shift)
+                mag += self.zeros[i]
+                if mag > 30 and strikes <=strike_lim:
+                    strikes+=1
+                    snrs.append(snr)
+                    mags.append(mag)
+                elif mag > 30 and strikes > strike_lim:
+                    mags=[]
+                    snrs=[]
+                    break
+                else:
+                    snrs.append(snr)
+                    mags.append(mag)
+            if len(mags) == 0:
                 continue
-            last_shape = np.shape(comet_pic.cutout)
-            self.comet_pics.append(comet_pic)
-            self.all_frames.append(comet_pic.cutout)
+            else: 
+                all_mags.append(mags)
+                snr_stddev.append((np.std(snrs)))
+                mag_med = np.median(mags)
+                mags_stddev.append(np.std(mags-mag_med))
+                dxs.append(dx)
+                dys.append(dy)
+                mags=np.array(mags)
+                rank.append(len(mags[mags < 30]))
+
+        snr_min_i = np.argmin(snr_stddev)
+        mags_min_i = np.argmin(mags_stddev)
+        rank_max_i = np.argmax(rank)
+
+        mags_1=np.array(all_mags)[snr_min_i]    #Offset with Minimum SNR Deviation
+        mags_2=np.array(all_mags)[mags_min_i]   #Offset with Minimum Mag Deviation
+        mags_3=np.array(all_mags)[rank_max_i]   #Offset with Most Valid Images
+
+        print("- MOST CONSISTENT MAG RESULT -")
+        print("Mag Sigma: ",np.min(mags_stddev))
+        print("Mag Median: ",np.median(mags_2))
+        dx = np.array(dxs)[mags_min_i]
+        dy = np.array(dys)[mags_min_i]
+        print("OFFSET: DX = ",dx," | DY = ",dy)
+        print("-"*10)
+
+        print("- MOST CONSISTENT SNR RESULT -")
+        dx = np.array(dxs)[snr_min_i]
+        dy = np.array(dys)[snr_min_i]
+        print("OFFSET: DX = ",dx," | DY = ",dy)
+
+        print("- MOST UNREJECTED IMAGES RESULT -")
+        dx = np.array(dxs)[rank_max_i]
+        dy = np.array(dys)[rank_max_i]
+        print("OFFSET: DX = ",dx," | DY = ",dy)
         
-        self.all_frames=np.array(self.all_frames)
-        if len(self.all_frames)==0:
-            print("ERROR: No Solved Images")
-            exit()
-
-        cutout_stack = composite_comet(self.all_frames)
-        self.comet_error = lock_comet(cutout_stack,fwhm=6,cutoff=self.comet_pixel_max)
-    
-    def lock_on_phase_2(self,plot_stack=False,show_frames=False,*args,**kwargs):
-        all_frames=[]
-        mags=[]
-        snrs = []
-        errors = []
-        t=[]
-        unscaled=False
-        offsets=[]
-        for pic in self.comet_pics:
-            pic.offset=self.comet_error
-            pic.apply_correction()
-            pic.cutout_comet(cutout_size=self.cutout_size)
-
-            pic.refine_lock(cutout_size=self.cutout_size) #Refine the lock on the comet by refitting a gaussian per image now we know we are *basically* on top of the comet
-
-            all_frames.append(pic.cutout)
-            if show_frames:
-                mark_target(pic.comet_pix_location,pic.img.data,rad=20)
-                print (pic.comet_pix_location)
-            t.append(pic.img.header["mjd-obs"])
-            zero=pic.img.get_zero()
-            if zero == 0:
-                mags.append(np.nan)
-                errors.append(np.nan)
-                unscaled=True
-                continue
-            
-
-            
-            #print(pic.img.image_path)
-            #print("Zero: ",zero)
-            mag,snr,error = pic.comet_ap_phot(7,1.2,1.5)
-            mags.append(mag+zero)
-            snrs.append(snr)
-            errors.append(error)
-        self.mags=mags
-        self.snrs=snrs
-        self.errors=errors
-
-        self.t=t
-        self.all_frames=all_frames
-        if unscaled:
-            print("WARNING, IMAGES EXCLUDED DUE TO MISSING ZERO POINTS")
-        if plot_stack:
-            cutout_stack = composite_comet(all_frames)
-            comet_error = lock_comet(cutout_stack,cutoff=self.comet_pixel_max)
-            cutout_stack[cutout_stack > self.comet_pixel_max] = 0
-            mark_target(comet_error+((len(cutout_stack[0])-1)/2),cutout_stack)
-    
     def plot_surf_brightness(self,min=1,
                              max=20,
                              y_relative = False,
@@ -736,7 +790,7 @@ class study_comet:
         plt.plot(radii,sums,label=self.jpl_name)
     
     def show_full_stack(self):
-        mark_target(self.comet_error+((len(self.cutout_stack[0])-1)/2),self.cutout_stack)
+        mark_target([(len(self.cutout_stack[0])-1)/2,(len(self.cutout_stack[0])-1)/2],self.cutout_stack)
 
     def analyse_path(self):
         jpl_coord_list=[]
@@ -749,45 +803,110 @@ class study_comet:
             jpl_coord_list.append(np.array([jpl_coord.ra.to(u.arcsec).value,jpl_coord.dec.to(u.arcsec).value]).flatten())
             
             dra,ddec = jpl_coord.spherical_offsets_to(pix_coord)
-            print((dra.to(u.arcsec)).value / 0.25 , " , ", ddec.to(u.arcsec).value / 0.25)
+            print((dra.to(u.arcsec)).value / 0.35 , " , ", ddec.to(u.arcsec).value / 0.35)
             print("-"*10)
 
         pix_coord_list=np.array(pix_coord_list)
         jpl_coord_list=np.array(jpl_coord_list)
 
-        #print((pix_coord_list[:,0]-jpl_coord_list[:,0])/0.25)
-        #print((pix_coord_list[:,1]-jpl_coord_list[:,1])/0.25)
+        #print((pix_coord_list[:,0]-jpl_coord_list[:,0])/0.35)
+        #print((pix_coord_list[:,1]-jpl_coord_list[:,1])/0.35)
 
-        print(np.median(pix_coord_list[:,0]-jpl_coord_list[:,0])/0.25)
-        print(np.median(pix_coord_list[:,1]-jpl_coord_list[:,1])/0.25)
+        print(np.median(pix_coord_list[:,0]-jpl_coord_list[:,0])/0.35)
+        print(np.median(pix_coord_list[:,1]-jpl_coord_list[:,1])/0.35)
 
-        plt.plot(self.t,pix_coord_list[:,0]-jpl_coord_list[0,0],".-",label="Locked On Track")
-        plt.plot(self.t,jpl_coord_list[:,0]-jpl_coord_list[0,0],".-",label="JPL Position Track")
+        plt.plot(self.t,pix_coord_list[:,1]-jpl_coord_list[0,1],".-",label="Locked On Track")
+        plt.plot(self.t,jpl_coord_list[:,1]-jpl_coord_list[0,1],".-",label="JPL Position Track")
+        #plt.plot(self.t,(pix_coord_list[:,0]-jpl_coord_list[:,0]),".-",label="RA Offset")
         plt.legend()
         plt.show()
 
+    def coord_sextractor(self,pic):
+        data = np.copy(pic.cutout)
+
+        sigma_clip = SigmaClip(sigma=5.0,maxiters=10)
+        bkg_estimator = MedianBackground()
+        bkg = Background2D(data, (20, 20), filter_size=(3, 3),
+                            sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
+        
+        data_bkgsub=data-bkg.background
+        data_bkgsub[data_bkgsub<0]=0
+
+        data = data_bkgsub
+
+        pad = int(len(data[0]) / 10)
+        mean, median, std = sigma_clipped_stats(data, sigma=5.0, maxiters=5)
+        daofind = DAOStarFinder(fwhm=5,threshold=3 * std, min_separation=4)
+        table=daofind.find_stars(data)
+
+        coords_x=np.array(table["xcentroid"])
+        coords_y=np.array(table["ycentroid"])
+        points=np.stack((coords_x,coords_y),axis=-1)
+
+        points=points[points[:,0] > pad]
+        points=points[points[:,1] > pad]
+        points=points[points[:,0] < (len(data[0])-pad)]
+        points=points[points[:,1] < (len(data[0])-pad)]
+
+        points[:,0] += pic.cutout_transform[0]
+        points[:,1] += pic.cutout_transform[1]
+
+        #apertures = CircularAperture(points, r=6)
+        #plt.imshow(pic.img.data,origin="lower",norm=LogNorm())
+        #apertures.plot(color='blue', lw=1.5, alpha=0.5)
+        #plt.show()
+
+        sky_points =  coords.SkyCoord.from_pixel(points[:,0],points[:,1],pic.img.wcs)
+        points[:,0] = sky_points.ra.to(u.deg).value
+        points[:,1] = sky_points.dec.to(u.deg).value
+
+        return points
+
+    def sextractor_check_predict(self,coords,pic):
+        data = np.copy(pic.img.data)
         
 
+        sigma_clip = SigmaClip(sigma=5.0,maxiters=10)
+        bkg_estimator = MedianBackground()
+        bkg = Background2D(data, (20, 20), filter_size=(3, 3),
+                            sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
+        
+        data_bkgsub=data-bkg.background
+        data_bkgsub[data_bkgsub<0]=0
 
+        data = data_bkgsub
 
+        mean, median, std = sigma_clipped_stats(data, sigma=5.0, maxiters=5)
+        daofind = DAOStarFinder(fwhm=5,threshold=1 * std, min_separation=4,xycoords=coords)
+        table=daofind.find_stars(data)
 
+        print(table)
 
-
+        #print (table["flux"])
+        #return table["flux"]
+            
 def composite_comet(frames):
     if (isinstance(frames[0],np.ndarray)):
+        valid_frames=[]
+        for i in range(0,len(frames)):
+            if np.shape(frames[i]) == np.shape(frames[0]):
+                valid_frames.append(frames[i])
+
+
+        #for frame in frames:
+            #frame = frame/np.median(frame)
         #avg=np.nansum(frames,axis=0)
-        avg=np.median(frames,axis=0)
+        avg=np.median(valid_frames,axis=0)
         return avg
     else:
         print("ERROR, IMAGES ARE NOT NUMPY ARRAYS")
         return 0
     
-def lock_comet(og_img,fwhm=6,cutoff=10000,*args,**kwargs):
+def lock_comet(og_img,fwhm=4,cutoff=10000,*args,**kwargs):
     img=np.copy(og_img)
-    img[img > cutoff+np.nanmedian(img)] = 0
-    img=img-np.nanmedian(img) 
+    img[img > cutoff] = 0
+    #img=img-np.nanmedian(img) 
     img[img < 0] = 0
-
     result=fit_gauss(img,fwhm=fwhm).results
     center=(len(img[0])-1)/2
 
@@ -798,7 +917,7 @@ def lock_comet(og_img,fwhm=6,cutoff=10000,*args,**kwargs):
 
 def mark_target(pos,image_data,rad=0,*args,**kwargs):
     if rad==0:
-        rad=len(image_data[0])/50
+        rad=1+len(image_data[0])/50
     aperture = CircularAperture(pos, r=rad)
     plt.imshow(image_data,origin="lower",cmap="grey",norm=LogNorm())
     aperture.plot(color="red",lw=1.5,alpha=0.5)

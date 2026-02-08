@@ -20,22 +20,35 @@ class process_filter:
                  ref_image,
                  trim=None,
                  px_scale=0.24,
+                 data_hdu = 0,
+                 flat_type="SKY,FLAT",
+                 filter_tag='HIERARCH ESO INS FILT1 NAME',
                  trim_tags=["HIERARCH ESO DET OUT1 PRSCX","HIERARCH ESO DET OUT1 PRSCY","HIERARCH ESO DET OUT1 OVSCX","HIERARCH ESO DET OUT1 OVSCY"],
                  exclude_tgts=[],
                  include_tgts=[],
                  make_bad_pixel_mask = True,
                  plate_solve = True,
+                 solver_fwhm = 6,
+                 solver_thresh = 8,
                  fringe_correct = True,
                  fringe_exptime_limit=0,
                  *args,
                  **kwargs):
 
         self.filter=filter
+        self.filter_tag=filter_tag
+        self.hdu_tag=data_hdu
+
+        self.flat_type=flat_type
         self.input_path=input_path
         self.output_path=output_path
         self.plate_solve=plate_solve
         self.fringe_correct=fringe_correct
         self.exptime_limit=fringe_exptime_limit
+
+        self.solver_fwhm=solver_fwhm
+        self.solver_thresh=solver_thresh
+
         all_names=util.report_names(input_path)
 
         if len(include_tgts)!=0:
@@ -48,7 +61,7 @@ class process_filter:
 
         #trim_tags=["HIERARCH ESO DET OUT1 PRSCX","HIERARCH ESO DET OUT1 PRSCY","HIERARCH ESO DET OUT1 OVSCX","HIERARCH ESO DET OUT1 OVSCY"]
         if trim is None:
-            trim=CT.set_trim(ref_image,*trim_tags)
+            trim=CT.set_trim(ref_image,*trim_tags,hdu_index=data_hdu)
         
         all_fits_path = input_path
         calib_path = output_path
@@ -59,8 +72,8 @@ class process_filter:
         self.avg_bias = ccdp.trim_image(avg_bias[self.trim])
 
         self.avg_flat=CT.create_master_flat(filter,
-                                    "ESO INS FILT1 NAME".lower(),
-                                    "FLAT,SKY",
+                                    self.filter_tag.lower(),
+                                    self.flat_type,
                                     self.avg_bias,
                                     self.trim,
                                     all_fits_path,
@@ -68,7 +81,7 @@ class process_filter:
         
 
         if make_bad_pixel_mask:
-            self.bad_pixel_mask=CT.generate_bad_pixel_mask(all_fits_path,calib_path,filter=filter)
+            self.bad_pixel_mask=CT.generate_bad_pixel_mask(all_fits_path,calib_path,filter=filter,filter_tag=self.filter_tag)
         else:
             self.bad_pixel_mask=CT.load_bad_pixel_mask(calib_path)
 
@@ -78,13 +91,13 @@ class process_filter:
         filter_tgts=[]
         print("--- COMETS IN FILTER BAND ---")
         for tgt in tgt_names:
-            if len(tgt)>10:
+            if len(tgt)>30:
                 continue
-            elif "STD" in tgt:
+            elif "STD" in tgt or "std" in tgt or "Cal" in tgt or "SA" in tgt:
                 continue
                 
             lights=ImageFileCollection(input_path,keywords='*',glob_exclude="bias_sub_*")
-            criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
+            criteria={'object' : tgt, self.filter_tag.lower():filter}
             file_names=lights.files_filtered(**criteria)
             if len(file_names)>0:
                 filter_tgts.append(tgt)
@@ -108,7 +121,7 @@ class process_filter:
 
         lights=ImageFileCollection(all_fits_path,keywords='*',glob_exclude="bias_sub_*")
         lights.sort(["object","mjd-obs"])
-        criteria={'object' : tgt_name, "ESO INS FILT1 NAME".lower():self.filter}
+        criteria={'object' : tgt_name, self.filter_tag.lower():self.filter}
         tgt_lights=lights.files_filtered(**criteria)
         lights=lights.filter(**criteria)
         times=np.array(lights.summary["exptime"])
@@ -130,6 +143,8 @@ class process_filter:
                         self.avg_flat,
                         tgt_name,
                         self.filter,
+                        filter_tag=self.filter_tag,
+                        hdu_index = self.hdu_tag, 
                         mask=self.bad_pixel_mask,
                         fringe_map=self.fringe_map,
                         fringe_points=self.fringe_points)
@@ -140,22 +155,24 @@ class process_filter:
                             science_files,
                             self.px_scale,
                             self.bad_pixel_mask,
-                            6,
-                            8)
+                            self.solver_fwhm,
+                            self.solver_thresh)
 
 class fringe_correct_existing:
     def __init__(self,                 
                  filter,
                  calib_path,
+                 px_scale=0.24,
+                 filter_tag="ESO INS FILT1 NAME",
                  exclude_tgts=[],
                  include_tgts=[],
                  *args,
                  **kwargs):
 
         self.filter=filter
-        
+        self.filter_tag=filter_tag
         root_dir = pathlib.Path(__file__).resolve().parent
-        self.px_scale=0.24
+        self.px_scale=px_scale
 
         #self.bad_pixel_mask=CT.load_bad_pixel_mask(calib_path)
 
@@ -173,7 +190,7 @@ class fringe_correct_existing:
 
     def correct_fringe(self,exptime_thresh=0,*args,**kwargs):
         lights=ImageFileCollection(self.calib_path,keywords='*')
-        criteria={"ESO INS FILT1 NAME".lower():self.filter}
+        criteria={self.filter_tag.lower():self.filter}
         tgt_lights=lights.files_filtered(**criteria)
 
         for file in tgt_lights:
@@ -199,7 +216,7 @@ class fringe_correct_existing:
 
     def measure_fringe(self):
         lights=ImageFileCollection(self.calib_path,keywords='*',glob_exclude="bias_sub_*")
-        criteria={"ESO INS FILT1 NAME".lower():self.filter}
+        criteria={self.filter_tag.lower():self.filter}
         tgt_lights=lights.files_filtered(**criteria)
         for file in tgt_lights:
             if len(file) < 20 or "MAP" in file:
@@ -234,6 +251,7 @@ class plate_solve_existing:
     def __init__(self,calib_path,all_fits_path,
                  px_scale,
                  filter,
+                 filter_tag="ESO INS FILT1 NAME",
                  include_tgts=[],
                  exclude_tgts=[],
                  sext_fwhm=6,
@@ -243,6 +261,7 @@ class plate_solve_existing:
         
         self.sext_thresh=sext_thresh
         self.sext_fwhm = sext_fwhm
+        self.filter_tag=filter_tag
         all_names=util.report_names(all_fits_path)
         if len(include_tgts)!=0:
             tgt_names=all_names[np.isin(all_names,include_tgts,invert=False)]
@@ -261,11 +280,10 @@ class plate_solve_existing:
             print(tgt_name)
             self.plate_solve(tgt_name)
             
-            
-
     def plate_solve(self,tgt_name):
-        criteria={'object' : tgt_name, "ESO INS FILT1 NAME".lower():self.filter}
+        criteria={'object' : tgt_name, self.filter_tag.lower():self.filter}
         science=ImageFileCollection(self.calib_path,keywords='*',glob_include=tgt_name+"_"+self.filter+"*")
+        #science=ImageFileCollection(self.calib_path,keywords='*')
         science_files=science.files_filtered(**criteria)
         CT.batch_plate_solve(self.calib_path,
                         science_files,

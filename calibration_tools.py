@@ -46,14 +46,14 @@ def scale_min_max(a):
     print (np.nanmax(scaled))
     return scaled
 
-def set_trim(image_path,prescan_x_tag,prescan_y_tag,overscan_x_tag,overscan_y_tag,extra_clip=0,xlow=0,xhigh=0,ylow=0,yhigh=0,*args,**kwargs):
+def set_trim(image_path,prescan_x_tag,prescan_y_tag,overscan_x_tag,overscan_y_tag,hdu_index=0,extra_clip=0,xlow=0,xhigh=0,ylow=0,yhigh=0,*args,**kwargs):
     with fits.open(image_path) as img:
-        low_x=img[0].header[prescan_x_tag]+extra_clip+xlow
-        high_x=img[0].header[overscan_x_tag]+extra_clip+xhigh
-        low_y=img[0].header[prescan_y_tag]+extra_clip+ylow
-        high_y=img[0].header[overscan_y_tag]+extra_clip+yhigh
-        x_span=img[0].header["NAXIS1"]
-        y_span=img[0].header["NAXIS2"]
+        low_x=img[hdu_index].header[prescan_x_tag]+extra_clip+xlow
+        high_x=img[hdu_index].header[overscan_x_tag]+extra_clip+xhigh
+        low_y=img[hdu_index].header[prescan_y_tag]+extra_clip+ylow
+        high_y=img[hdu_index].header[overscan_y_tag]+extra_clip+yhigh
+        x_span=img[hdu_index].header["NAXIS1"]
+        y_span=img[hdu_index].header["NAXIS2"]
 #
     return (np.s_[low_y:y_span-high_y,low_x:x_span-high_x])
 
@@ -64,7 +64,7 @@ def create_master_bias(in_path,out_path):
     bias=ifc.filter(**filters)
     c=Combiner(bias.ccds(ccd_kwargs={'unit': 'adu'}))
     avg_bias=c.median_combine()
-
+    avg_bias.header["object"] = "BIAS"
     out_path=pathlib.Path(out_path/("BIAS_MASTER.fits"))
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     avg_bias.write(str(out_path),overwrite=True)
@@ -72,9 +72,9 @@ def create_master_bias(in_path,out_path):
     return (avg_bias)
 
 
-def create_master_flat(img_filter,img_filter_tag, flat_type, bias, trim, in_path, out_path):
+def create_master_flat(img_filter,img_filter_tag, flat_type, bias, trim, in_path, out_path,hdu_tag=0,*args,**kwargs):
     print("CREATING FLAT: "+flat_type+" | FILTER: "+img_filter)
-    sort_critera={'object' : flat_type,img_filter_tag : img_filter}
+    sort_critera={'object' : flat_type, img_filter_tag : img_filter}
     flats=ImageFileCollection(in_path,keywords='*',glob_exclude="bias_sub_*").filter(**sort_critera)
     n=0
     for ccd,file in flats.ccds(ccd_kwargs={'unit': 'adu'},return_fname=True):
@@ -94,7 +94,8 @@ def create_master_flat(img_filter,img_filter_tag, flat_type, bias, trim, in_path
     avg_flat.write(str(out_path),overwrite=True)
 
     img=fits.open(out_path,mode="update")
-    img[0].header.set('HIERARCH ESO INS FILT1 NAME',img_filter)
+    img[0].header.set(img_filter_tag,img_filter)
+    img[0].header.set("object",flat_type)
     img.close()
 
     print("FLAT FIELD SAVED AT: "+str(out_path))
@@ -112,11 +113,11 @@ def load_bad_pixel_mask(dir):
     else:
         print("NO BAD PIXEL MASK FOUND")
 
-def generate_bad_pixel_mask(all_fits_path,out_path,filter="R#642",*args,**kwargs):
+def generate_bad_pixel_mask(all_fits_path,out_path,filter_tag="ESO INS FILT1 NAME",filter="R#642",*args,**kwargs):
     print("GENERATING BAD PIXEL MASK")
     flats=ImageFileCollection(all_fits_path,keywords='*',glob_include="*bias_sub*")
     flats.sort("exptime")
-    crit={"ESO INS FILT1 NAME".lower():filter}
+    crit={filter_tag.lower():filter}
 
     files=flats.files_filtered(**crit)
     first_img=CCDData.read(all_fits_path/files[0])
@@ -150,13 +151,15 @@ def cosmic_ray_mask(ccd_image,gain,read_noise):
     return new_ccd.mask
 
 
-def reduce_img(tgt_path,out_path,trim,bias,flat,tgt_name,img_filter, 
-               fringe_map = None, fringe_points = None, mask = None, *args, **kwargs ):
+def reduce_img(tgt_path,out_path,trim,bias,flat,tgt_name,img_filter, filter_tag = "ESO INS FILT1 NAME",
+               fringe_map = None, fringe_points = None, mask = None, hdu_index=0, *args, **kwargs ):
     with fits.open(tgt_path) as img:
-        read_noise=float(img[0].header["HIERARCH ESO DET OUT1 RON".lower()])
-        gain=float(img[0].header["HIERARCH ESO DET OUT1 CONAD".lower()])
+        read_noise=float(img[hdu_index].header["HIERARCH ESO DET OUT1 RON".lower()])
+        gain=float(img[hdu_index].header["HIERARCH ESO DET OUT1 CONAD".lower()])
+        ra = float(img[0].header["RA"])
+        dec = float(img[0].header["DEC"])
 
-    tgt=CCDData.read(tgt_path,unit='adu')
+    tgt=CCDData.read(tgt_path,unit='adu',hdu=hdu_index)
     tgt=ccdp.trim_image(tgt[trim])
     tgt=ccdp.subtract_bias(tgt,bias)
     tgt=ccdp.flat_correct(tgt,flat)
@@ -171,6 +174,11 @@ def reduce_img(tgt_path,out_path,trim,bias,flat,tgt_name,img_filter,
     if mask is not None:
         tgt.mask = tgt.mask | mask
 
+    
+    tgt.header[filter_tag] = img_filter
+    tgt.header["object"] = tgt_name
+    tgt.header["RA"] = ra
+    tgt.header["DEC"] = dec
 
     out_path=pathlib.Path(out_path/(tgt_name+"_"+img_filter+"_"+str(tgt.header["mjd-obs"])+".fits"))
 
@@ -224,15 +232,15 @@ def plate_solve(img_path,px_scale):
 
     return plate_wcs,solved_flag
 
-def source_list_plate_solve(img_path,sources,px_scale):
+def source_list_plate_solve(img_path,sources,px_scale,hdu_index=0,*args,**kwargs):
     ra_tag="RA"
     dec_tag="DEC"
     solved_flag=False
     with fits.open(img_path) as img:
         ra_cent=img[0].header[ra_tag]
         dec_cent=img[0].header[dec_tag]
-        xsize=img[0].header["naxis1"]
-        ysize=img[0].header["naxis2"]
+        xsize=img[hdu_index].header["naxis1"]
+        ysize=img[hdu_index].header["naxis2"]
     
 
     ast=ANet()
@@ -286,15 +294,15 @@ def sextractor(img_path,fwhm,thresh,mask):
     ccd = CCDData.read(img_path)
     data = ccd.data
     mean, median, std = sigma_clipped_stats(data, sigma=5.0, maxiters=5)
-    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh * std,min_separation=8)
+    daofind = DAOStarFinder(fwhm=fwhm,threshold=thresh * std, min_separation=8)
     table=daofind.find_stars(data,mask=mask)
     #table=table[np.abs(table["roundness2"])<0.35]
 
     table.sort("flux")
     table.reverse()
     table=table[:150]
-    """
     
+    """
     #This is here to debug source extraction
     coords_x=np.array(table["xcentroid"])
     coords_y=np.array(table["ycentroid"])
@@ -409,8 +417,8 @@ def avgstack(images):
     stack = c.median_combine()
     return stack
 
-def make_fringe_map(calib_path,filter,mask):
-    criteria={"ESO INS FILT1 NAME".lower():filter}
+def make_fringe_map(calib_path,filter,mask,filter_tag="ESO INS FILT1 NAME",*args,**kwargs):
+    criteria={filter_tag.lower():filter}
     fringe_comp=ImageFileCollection(calib_path,keywords='*',glob_include="fringe_comp*").filter(**criteria)
     comp_files=fringe_comp.files
 
@@ -432,7 +440,7 @@ def make_fringe_map(calib_path,filter,mask):
     fringe_map.write(str(out_path),overwrite=True)
 
     img=fits.open(out_path,mode="update")
-    img[0].header.set('HIERARCH ESO INS FILT1 NAME',filter)
+    img[0].header.set(filter_tag,filter)
     img.close()
 
     print("FRINGE MAP SAVED AT: "+str(out_path))

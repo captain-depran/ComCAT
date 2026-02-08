@@ -129,7 +129,7 @@ def dataset_split(full_set,threshold,data_set_label):
 
 
 
-def filter_sort(folder_path):
+def filter_sort(folder_path,filter_tag='HIERARCH ESO INS FILT1 NAME',*args,**kwargs):
     """
     Scans a data set and sorts them into folders by filter
 
@@ -142,7 +142,7 @@ def filter_sort(folder_path):
             if img[0].header['object'] == "BIAS":
                 filter="FREE"
             else:
-                filter=(img[0].header['HIERARCH ESO INS FILT1 NAME'])
+                filter=(img[0].header[filter_tag])
         move_file(file,folder_path,filter)
     
     
@@ -161,7 +161,7 @@ def object_sort(folder_path):
         move_file(file,folder_path,object)
 
 
-def filter_object_sort(block_parent_path):
+def filter_object_sort(block_parent_path,filter_tag='HIERARCH ESO INS FILT1 NAME',*args,**kwargs):
     """
     Runs through a directory sorted into observational blocks, and per block, sorts by observational object, and within each object's folder, sorts by filter
     (Designed to run after the dataset_split() function)
@@ -177,7 +177,7 @@ def filter_object_sort(block_parent_path):
                 if object.name=="ALL_FITS":
                     pass
                 else:
-                    filter_sort(object)
+                    filter_sort(object,filter_tag)
 
 
 
@@ -260,7 +260,7 @@ def create_np_frames(data_path):
                         create_master(bias)
 
 
-def organise_files(unsorted_dir,data_set_label):
+def organise_files(unsorted_dir,data_set_label,filter_tag='HIERARCH ESO INS FILT1 NAME',*args,**kwargs):
     """
     Organisation of a data dump of .fits files. Will sort as follows:
         1) Split into observational blocks/nights
@@ -272,12 +272,12 @@ def organise_files(unsorted_dir,data_set_label):
     """
     data_set_dir=unsorted_dir.parent
     file_list=list_files(unsorted_dir)
-    dataset_split(file_list,14,data_set_label)
-    filter_object_sort(data_set_dir)
+    dataset_split(file_list,8,data_set_label)
+    filter_object_sort(data_set_dir,filter_tag)
 
 root_dir = pathlib.Path(__file__).resolve().parent
-#dir=pathlib.Path(root_dir/"Data_set_2"/"unpacked_data")
-#organise_files(dir,"Data_set_2")
+#dir=pathlib.Path(root_dir/"Data_set_3"/"unpacked_data")
+#organise_files(dir,"Data_set_3",'HIERARCH ESO INS FILT2 NAME')
 
 
 
