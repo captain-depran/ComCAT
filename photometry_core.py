@@ -50,7 +50,7 @@ def get_image_data(calib_path,tgt,filter):
     return data
 
 def get_image_files(calib_path,tgt,filter):
-    print(tgt)
+    #print(tgt)
     criteria={'object' : tgt, "ESO INS FILT1 NAME".lower():filter}
     science=ImageFileCollection(calib_path,keywords='*',glob_include=tgt+"_"+filter+"*")
     #science.sort("mjd-obs")
@@ -171,15 +171,21 @@ class ESO_image:
             try:
                 self.zero=img[0].header["zero_point"]
             except:
-                self.zero=0
+                self.zero = 0
+                self.zero_err = 0
                 print("NO ZERO")
+            try:
+                self.zero_err = img[0].header ["zero_error"]
+            except:
+                self.zero_err = 0
+                print("NO ZERO ERROR")
             img.close()
-        return self.zero
+        return self.zero,self.zero_err
 
-    def update_zero(self,zero_point):
+    def update_zero(self,zero_point,err):
         #print(self.image_path)
         with fits.open(self.image_path,mode="update",memmap=False) as img:
-            img[0].header.update({"zero_point" : zero_point})
+            img[0].header.update({"zero_point" : zero_point, "zero_error" : err})
         
 
 
@@ -189,16 +195,18 @@ class field_catalogue:
         midy=int(len(ref_img.data[:,1])/2)
         midx=int(len(ref_img.data[1,:])/2)
 
-        vizier = Vizier(row_limit=-1) # this instantiates Vizier with its default parameters
+        vizier = Vizier(row_limit=-1,columns=['RA_ICRS','DE_ICRS','gmag','rmag','imag','e_gmag','e_rmag','e_imag']) # this instantiates Vizier with its default parameters
         Vizier.clear_cache()
         print("Loading Wide Area Catalogue...")
         catalogue = vizier.query_region(img_wcs.pixel_to_world(midx,midy),
                                     width=field_width,
                                     catalog="J/ApJ/867/105/refcat2",
                                     column_filters={'gmag': '!=','rmag': '!=','imag': '!='})[0]
+        
         catalogue.add_column(np.linspace(0,len(catalogue)-1,num=len(catalogue)),name="ID")
         print(len(catalogue["ID"])," Valid Targets Found...")
         print("Filtering Targets...")
+        
         self.whole_field,self.excluded_stars=self.catalogue_filter(catalogue,
                                                                    (2*star_cell_size*pix_size),
                                                                    ref_filter)
@@ -207,7 +215,7 @@ class field_catalogue:
 
     def catalogue_filter(self,catalogue,min_sep_AS,filter_band):
         """
-        Removes stars from the catalogue that are too close together
+        Removes stars from the catalogue that are too close together, to faint, or have errors on their colours that are too large
         """
         min_sep=min_sep_AS/60/60
 
@@ -215,6 +223,9 @@ class field_catalogue:
         filter=filter_band
 
         catalogue[filter].fill_value = 99
+        catalogue=catalogue[catalogue["e_rmag"] < 0.05]
+        catalogue=catalogue[catalogue["e_gmag"] < 0.05]
+        catalogue=catalogue[catalogue["e_imag"] < 0.05]       
         
 
         for n,entry in tqdm(zip(range(0,len(catalogue["ID"].value)),catalogue.iterrows("RA_ICRS","DE_ICRS",filter,"ID"))):
@@ -247,6 +258,7 @@ class field_catalogue:
         removed_ids=np.unique(removed_ids)
         exclude_cat=catalogue[np.isin(catalogue["ID"],removed_ids)]
         catalogue=catalogue[np.isin(catalogue["ID"],removed_ids,invert=True)]
+        
         return catalogue,exclude_cat
     
     def catalogue_pos_parse(self,wcs,field_height,field_width,edge_pad):
@@ -273,7 +285,7 @@ class colour_calib_frame:
     """
     A class for a single frame used for calibrating the colour term. You create one per frame used during the calibration process
     """
-    def __init__(self,img,mask,edge_pad,field_catalogue,cat_filter,colour_median=0,*args, **kwargs):
+    def __init__(self,img,mask,edge_pad,field_catalogue,cat_filter,colour_median=0,SNR_thresh = 5,*args, **kwargs):
         self.mask=mask
         self.cat_filter=cat_filter
         self.cat_pix,self.cat_ids,self.frame_catalogue=field_catalogue.field_section(img,edge_pad)
@@ -283,6 +295,7 @@ class colour_calib_frame:
         self.estimate_bkg()
         self.colour_median=colour_median
         self.invalid_ids=[]
+        self.SNR_thresh = SNR_thresh
         self.no_stars=False
 
     def estimate_bkg(self):
@@ -324,7 +337,8 @@ class colour_calib_frame:
             self.target_table["fwhm"] = fwhm
 
             if fwhm_plot:
-                plt.hist(fwhm,bins=20)
+                #plt.hist(fwhm,bins=20)
+                plt.scatter(np.linspace(0,len(fwhm),len(fwhm)),fwhm)
                 plt.show()
             
             self.avg_fwhm=np.median(fwhm)
@@ -419,6 +433,7 @@ class colour_calib_frame:
         self.invalid_ids.extend(self.target_table[self.target_table["app_sum"] <= 0]["id"].value) #Mark any observation with a negative aperture sum as invalid
         self.invalid_ids.extend(self.target_table[self.target_table["SNR"] <= 0]["id"].value) #Mark any observation with a negative SNR as invalid
         self.invalid_ids.extend(self.target_table[np.isnan(self.target_table["SNR"])]["id"].value) #Mark any observation with a NAN SNR as invalid
+        self.invalid_ids.extend(self.target_table[self.target_table["SNR"] <= self.SNR_thresh]["id"].value) #Mark any sub-par SNR stars as invalid
 
 
         self.invalid_ids=np.unique(self.invalid_ids) #Remove any duplicate invalid IDs
@@ -437,11 +452,22 @@ class colour_calib_frame:
 
         
 
-    def colour_grad_fit(self,col_a,col_b):
+    def colour_grad_fit(self,col_a,col_b, col_low = 0, col_high = 1, *args, **kwargs):
 
         self.target_table["colour_dif"] = self.target_table["mag"] - self.frame_catalogue[self.cat_filter]
         self.target_table["cat_colour"] = self.frame_catalogue[col_a] - self.frame_catalogue[col_b]
+        self.target_table["colour_err"] = linear_error(self.frame_catalogue[str("e_"+col_a)],self.frame_catalogue[str("e_"+col_b)])
+
+        self.frame_catalogue=self.frame_catalogue[self.target_table["cat_colour"] > col_low]
+        self.target_table=self.target_table[self.target_table["cat_colour"] > col_low]
+        self.frame_catalogue=self.frame_catalogue[self.target_table["cat_colour"] < col_high]
+        self.target_table=self.target_table[self.target_table["cat_colour"] < col_high]
+
         self.target_table["Scaled colour_dif"]=self.target_table["colour_dif"]-np.median(self.target_table["colour_dif"])
+
+        if len(self.target_table) <= 1:
+            return 0
+        
 
         fit = fitting.LinearLSQFitter()
         or_fit = fitting.FittingWithOutlierRemoval(fit, sigma_clip, niter=3, sigma=3.0)
@@ -451,11 +477,17 @@ class colour_calib_frame:
         fitted_line,mask = or_fit(line_init,self.target_table["cat_colour"].value,self.target_table["Scaled colour_dif"].value,weights=1/self.target_table["mag_error"])
         filtered_data=np.ma.masked_array(self.target_table["Scaled colour_dif"].value,mask=mask)
         self.colour_grad = (fitted_line(2)-fitted_line(1))
-        return self.target_table["Scaled colour_dif"].value, self.target_table["cat_colour"].value, self.target_table["id"].value, self.colour_grad,filtered_data,self.target_table["mag_error"]
+        return self.colour_grad
     
-    def apply_colour_grad(self,col_a,col_b,colour_term):
+    def apply_colour_grad(self,col_a,col_b,colour_term, col_low = 0, col_high = 1, *args, **kwargs):
         self.target_table["cat_colour"] = self.frame_catalogue[col_a] - self.frame_catalogue[col_b]
-        self.target_table["colour_dif"] = self.target_table["mag"] - self.frame_catalogue[self.cat_filter]
+        self.target_table["colour_err"] = linear_error(self.frame_catalogue[str("e_"+col_a)],self.frame_catalogue[str("e_"+col_b)])
+
+        self.frame_catalogue=self.frame_catalogue[self.target_table["cat_colour"] > col_low]
+        self.target_table=self.target_table[self.target_table["cat_colour"] > col_low]
+        self.frame_catalogue=self.frame_catalogue[self.target_table["cat_colour"] < col_high]
+        self.target_table=self.target_table[self.target_table["cat_colour"] < col_high]
+
         
         #zero = self.target_table["colour_dif"] - (colour_term * self.target_table["cat_colour"].value)
 
@@ -469,13 +501,31 @@ class colour_calib_frame:
 
 
     def colour_zero(self,gradient):
-        offset = np.median(gradient * self.target_table["cat_colour"].value - self.target_table["colour_dif"].value)
-        offset = offset - np.median(self.target_table["cat_colour"]*gradient)
+        #zeros = self.frame_catalogue[self.cat_filter] - self.target_table["mag"] - (gradient * self.target_table["cat_colour"].value)
+        
+        zeros = self.frame_catalogue[self.cat_filter] - (self.target_table["mag"] + (gradient * self.target_table["cat_colour"].value))
+        
+        offset = np.median(zeros)
+        
+
+        err = bootstrap_error(zeros,50)
+
+        #print("TEST METHOD")
+        #print("Median: ",np.median(zeros))
+        #print("Mean: ",np.mean(zeros))
+
+        #print("OLD METHOD")
+        #offset = np.median(gradient * self.target_table["cat_colour"].value - self.target_table["colour_dif"].value)
+        #print("OFFSET 1:", offset)
+        #offset = offset - np.median(self.target_table["cat_colour"]*gradient)
+        #print("OFFSET 2: ",offset)
         #print(offset)
         #offset = np.median(gradient * self.target_table["cat_colour"].value)
         self.zero_term=offset
 
-        self.frame.update_zero(offset)
+        self.frame.update_zero(offset,err)
+
+        #print(offset," +- ",err)
 
         return offset
     
@@ -621,6 +671,7 @@ class study_comet:
         self.cutouts = []
         self.t=[]
         self.zeros=[]
+        self.zero_errs=[]
         self.mags=[]
         self.snrs=[]
         self.errors=[]
@@ -651,11 +702,11 @@ class study_comet:
         self.mags=[]
         self.snrs=[]
         self.errors=[]    
-        for frame,zero in zip(self.comet_pics,self.zeros):
+        for frame,zero,err in zip(self.comet_pics,self.zeros,self.zero_errs):
             mag,snr,mag_err = frame.comet_ap_phot(app_rad,app_in,app_out,shift=shift)
             self.mags.append(mag+zero)
             self.snrs.append(snr)
-            self.errors.append(mag_err)
+            self.errors.append(linear_error(mag_err,err))
 
     def init_frame(self,image_name):
         img=ESO_image(self.calib_path,image_name)
@@ -678,8 +729,9 @@ class study_comet:
         
         self.comet_pics.append(comet_pic)
         self.cutouts.append(comet_pic.cutout)
-
-        self.zeros.append(comet_pic.img.get_zero())
+        zero,zero_err = comet_pic.img.get_zero()
+        self.zeros.append(zero)
+        self.zero_errs.append(zero_err)
         self.t.append(comet_pic.date)
         if self.show_frames:
             comet_pic.show_comet()
@@ -770,13 +822,13 @@ class study_comet:
                              logx=True,
                              logy=True,
                              *args,**kwargs):
-        sums,radii=surf_brightness(self.comet_error+((len(self.cutout_stack[0])-1)/2),
+        sums,radii=surf_brightness(np.array([0,0])+((len(self.cutout_stack[0])-1)/2),
                            self.cutout_stack,
                            step_size=1,
                            min=min,
                            max=max)
         radii=np.array(radii)
-        #radii=radii * 0.25
+
         if logx:
             radii = np.log(radii)
 
@@ -946,3 +998,14 @@ def surf_brightness(pos,image_data,min=3,max=20,step_size=1,*args,**kwargs):
         radii.append(np.sqrt(aperture_area/np.pi))
 
     return sums,radii
+
+def bootstrap_error(data,iters):
+    recalcs=[]
+    for i in range(0,iters):
+        samples=rng.choice(data,len(data))
+        recalcs.append(np.median(samples))
+    
+    return np.std(recalcs)
+
+def linear_error(err1,err2):
+    return np.sqrt((err1*err1) + (err2*err2))

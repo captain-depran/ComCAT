@@ -9,21 +9,21 @@ import pathlib
 import time
 
 root_dir = pathlib.Path(__file__).resolve().parent
-calib_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS"/"PROCESSED FRAMES")
-all_fits_path = pathlib.Path(root_dir/"Data_set_1"/"block_3"/"ALL_FITS")
+calib_path = pathlib.Path(root_dir/"Data_set_3"/"block_1"/"ALL_FITS"/"PROCESSED FRAMES")
+all_fits_path = pathlib.Path(root_dir/"Data_set_3"/"block_1"/"ALL_FITS")
 
-filter_1="V#641"
-filter_2="R#642"
+filter_1="V#606"
+filter_2="R#608"
 
 
-names=["29P"]
-jpl_names=["29P"]
-ephs=[90000394]
+names=["137P_Shoemaker-Levy2"]
+jpl_names=["137P"]
+ephs=[0]
 
 sol_col=0.45
 
-colour_term_1 = -0.5409201604183946
-colour_term_2 = -0.1787952655659952
+colour_term_1 = -0.5001500160690643
+colour_term_2 = -0.10532434831846106
 #shift_col= 0.45 #Solar colour, starting point
 #shift_col= 0.4085325  
 
@@ -38,12 +38,15 @@ def get_obs_mag(filter,name,jpl_name,eph):
                                    comet_pixel_max=10000,
                                    show_frames=False,
                                    cutout_size=50,
-                                   pos_offset = [-1,-3])
+                                   pos_offset = [-1,0])
     #comet.analyse_path()
-    comet.get_measures()
+    #comet.plot_surf_brightness(logx=False,logy=False)
+    #plt.show()
+    comet.get_measures(app_rad=5,app_in=1.2,app_out=2)
     m_obs=np.nanmedian(comet.mags)
     #plt.scatter(comet.t,comet.mags)
-    print(comet.mags)
+    #print(comet.mags)
+    #print(1/np.array(comet.errors))
     plt.errorbar(comet.t,comet.mags,yerr=comet.errors,fmt="k.")
     plt.show()
 

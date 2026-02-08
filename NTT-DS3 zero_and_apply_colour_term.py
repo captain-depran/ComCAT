@@ -21,8 +21,8 @@ pix_mask=CT.load_bad_pixel_mask(calib_path)
 
 
 #tgt_names=["137P_Shoemaker-Levy2","171P_Spahr","15P_Finlay","169P_NEAT"]
-#tgt_names=["69P_Taylor"]
-
+tgt_names=["146P"]
+"""
 tgt_names=["69P_Taylor",
 "137P_Shoemaker-Levy2",
 "138P_Shoemaker-Levy7",
@@ -47,7 +47,7 @@ tgt_names=["69P_Taylor",
 "47P",
 "62P",
 "94P"]
-
+"""
 
 
 filter="R#608"
@@ -55,6 +55,8 @@ cat_filter="rmag"
 
 colour_a="gmag"
 colour_b="rmag"
+
+term = -0.10532434831846106
 
 plot=True
 
@@ -139,82 +141,9 @@ for tgt_name in tgt_names:
             print("-"*10)
             continue
 
-        grad = subject_frame.colour_grad_fit(colour_a,colour_b)
+        zero = subject_frame.apply_colour_grad(colour_a,colour_b,term)
+
         #print("CALIBRATION STARS EXTRACTED!")
         #print("-"*10)
-        if grad == 0:
-            continue
-        else:
-            grads.append(grad)
-            calib_frames.append(subject_frame)
+        
     
-    
-
-print(len(calib_frames))
-
-term=np.median(grads)
-#print(grads)
-#print (colour_a + " - " + colour_b + " Colour Term: ",term)
-
-
-all_colours=[]
-all_difs=[]
-all_errors=[]
-all_offsets=[]
-all_snrs = []
-all_col_err=[]
-
-for frame in calib_frames:
-    offset = frame.colour_zero(term)
-    print(offset)
-    all_offsets.append(offset)
-    all_colours.extend(frame.target_table["cat_colour"])
-    all_difs.extend(frame.target_table["colour_dif"]-np.median(frame.target_table["colour_dif"]))
-    all_errors.extend(photo_core.linear_error(frame.target_table["mag_error"],frame.frame_catalogue[str("e_"+cat_filter)]))
-    all_snrs.extend(frame.target_table["SNR"])
-    all_col_err.extend(frame.target_table["colour_err"])
-
-
-
-
-print ("Per-frame Median term:")
-print (colour_a + " - " + colour_b + " Colour Term: ",term)
-
-print("OR")
-
-print ("Per-frame Mean term:")
-print (colour_a + " - " + colour_b + " Colour Term: ",np.mean(grads))
-
-print("OR")
-
-print("Total combined term")
-fit = fitting.LinearLSQFitter(calc_uncertainties=True)
-or_fit = fitting.FittingWithOutlierRemoval(fit, sigma_clip, niter=3, sigma=3.0)
-line_init = models.Linear1D()
-fitted_line,mask = or_fit(line_init,np.array(all_colours),np.array(all_difs),weights=1/(np.array(all_errors)+np.array(all_col_err)))
-colour_term = (fitted_line(2)-fitted_line(1))
-
-print (colour_a + " - " + colour_b + " Colour Term: ",colour_term, " +- ",fitted_line.slope.std)
-
-grad_error = fitted_line.slope.std
-int_error = fitted_line.intercept.std
-
-
-all_stars = len(all_difs)
-print("MEASUREMENTS FOUND: ",all_stars)
-print("UNIQUE STARS: ",len(np.unique(all_colours)))
-
-
-if plot:
-    xs=np.linspace(np.min(all_colours),np.max(all_colours),100)
-    plt.scatter(all_colours,np.ma.masked_array(all_difs, mask=mask),c="g",alpha=0.8,zorder=0)
-    plt.errorbar(all_colours,all_difs,yerr=all_errors,xerr=all_col_err,fmt="kx",alpha=0.5,ecolor=[0,0,0,0.05],zorder=4)
-    plt.fill_between(xs,((fitted_line.slope-grad_error) * xs)+(fitted_line.intercept-int_error),((fitted_line.slope+grad_error) * xs)+(fitted_line.intercept+int_error),alpha=0.5,zorder=6)
-    #plt.fill_between(xs,((fitted_line.slope-grad_error) * xs)+(fitted_line.intercept+int_error),((fitted_line.slope+grad_error) * xs)+(fitted_line.intercept-int_error),alpha=0.2)
-    plt.plot(xs,fitted_line(xs),color="red",linewidth="2",zorder=10)
-    
-
-    plt.legend()
-    plt.show()
-
-

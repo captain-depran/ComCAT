@@ -19,7 +19,7 @@ filter_2="V#606"
 
 #name="137P_Shoemaker-Levy2"
 name="146P"
-jpl_name="137P"
+jpl_name="146P"
 eph=0
 
 sol_col=0.45
